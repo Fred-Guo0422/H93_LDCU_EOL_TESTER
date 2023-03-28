@@ -1,0 +1,634 @@
+//=========================ZLG CAN1===========================
+function Init_ZLG_USBCANFD()
+{
+    UpdateStatus("====== Init_ZLG_USBCANFD start=========");
+
+    $debug = true;
+    //~ $debug = false;
+    /////Init  ZLG USBCANFD 
+    $Setfilter_result = false;
+    //E4119D9AC05907F4D3B0
+    // /41：device_type（USBCANFD）   第一个参数0: 设备号，第二个参数0仅作保留，可以填其他数字
+    $g_ZLG_USBCAN_Device_Handle = USBCANFD_OpenDevice(41,0,0);  /
+    SleepMilliseconds(200);
+    // 第一个参数是设备句柄，
+    // 第二个参数是通道序号（从0开始），
+    // 第三个参数是CANFD标准，//0 for ISO,1 for BOSCH，
+    // 第四个参数是CAN（0）或者CANFD（1），
+    // 第五个参数是：arbitration can baudrate（单位是Kbps），  
+    // 第六个参数是：data field can baudrate（单位是Kbps），
+    // 如果是CAN则第五、第六个参数都设一样即可，
+    //~ 第七个参数是是否加速，0加速，1不加速，如果是CAN这个参数设啥都不影响
+    $g_ZLG_USBCAN_Channel_Handle = USBCANFD_InitCAN($g_ZLG_USBCAN_Device_Handle, 0, 0, 1,500,2000,0);   
+    USBCANFD_Start($g_ZLG_USBCAN_Channel_Handle);//通道的句柄
+    SleepMilliseconds(200);
+    $g_ZLG_USBCAN_Channel_Handle2 = USBCANFD_InitCAN($g_ZLG_USBCAN_Device_Handle, 1, 0, 1,500,2000,0);   
+    SleepMilliseconds(200);
+    USBCANFD_Start($g_ZLG_USBCAN_Channel_Handle2);//
+    //~ $Setfilter_result = USBCANFD_SetFilter($Device_Handle,0,0,"00","60010","60012","FFFFFFFF"); //0: 设备号   0：通道号
+    //~ UpdateStatus($Setfilter_result);	
+    //第一个参数是设备句柄
+    //第二个参数是通道序号（从0开始），
+    //第三个参数是滤波类型0-标准帧，1-拓展帧，
+    //第四参数是第一组要滤波CAN的起始ID，
+    //第五参数是第一组要滤波CAN的结束ID，
+    //第六参数是第二组要滤波CAN的起始ID，
+    //第七参数是第二组要滤波CAN的结束ID，
+    $Setfilter_result = USBCANFD_SetFilter($g_ZLG_USBCAN_Device_Handle,0,0,"700","7FF","00","00"); 
+    $Setfilter_result = USBCANFD_SetFilter($g_ZLG_USBCAN_Device_Handle,1,0,"700","7FF","00","00"); 
+    $CommandWaittingTime = 100 ;
+    UpdateStatus("====== Init_ZLG_USBCANFD End=========");
+    return;
+}
+
+function Close_ZLG_USBCANFD()
+{
+  USBCANFD_ResetCAN($g_ZLG_USBCAN_Channel_Handle)		//重置 CH1
+  USBCANFD_ResetCAN($g_ZLG_USBCAN_Channel_Handle2)		//重置 CH2
+  USBCANFD_CloseDevice($g_ZLG_USBCAN_Device_Handle);	//关闭 CAN1
+  return;
+}
+
+function Read_ZLG_USBCANFD_Info()
+{
+    UpdateStatus("====== Read_ZLG_USBCANFD_Info start=========");
+    ($hw_Version,$fw_Version,$dr_Version,$in_Version,$irq_Num,$can_Num,$str_Serial_Num,$str_hw_Type) = USBCANFD_GetDeviceInf($g_ZLG_USBCAN_Device_Handle)
+    UpdateStatus($hw_Version);
+    UpdateStatus($fw_Version);
+    UpdateStatus($dr_Version);
+    UpdateStatus($in_Version);    
+    UpdateStatus($irq_Num);
+    UpdateStatus($can_Num);
+    UpdateStatus($str_Serial_Num);
+    UpdateStatus($str_hw_Type);
+    UpdateStatus("====== Read_ZLG_USBCANFD_Info End=========");
+    return;  
+}
+
+function ZLG_CAN_Rev()
+{
+     
+  //~ UpdateStatus("===============ZLG_CAN_Rev begin==============");
+    $CAN_Rev_Msg = "";
+    $g_CAN_Rev_Msg_Num = USBCAN_GetReceiveNum($g_ZLG_USBCAN_Channel_Handle,0);//1.channel handle;2.CAN-0/CANFD-1;
+    //~ UpdateStatus($g_CAN_Rev_Msg_Num);
+    if($g_CAN_Rev_Msg_Num > 0)
+    {
+      $CAN_Rev_Msg = USBCAN_Receive($g_ZLG_USBCAN_Channel_Handle);//channel handle
+      //~ UpdateStatus($CAN_Rev_Msg);
+      $show_CAN_Rev_Msg="CAN_Rev_Msg = "+$CAN_Rev_Msg;
+      UpdateStatus ($show_CAN_Rev_Msg);
+    }
+    //~ UpdateStatus("===============ZLG_CAN_Rev end==============");
+    
+    return;
+}
+function ZLG_CANFD_Rev()
+{
+    //~ UpdateStatus("===============ZLG_CANFD_Rev begin==============");
+    $CAN_Rev_Msg = "";
+    $g_CAN_Rev_Msg_Num = USBCANFD_GetReceiveNum($g_ZLG_USBCAN_Channel_Handle,1);//1.channel handle;2.CAN-0/CANFD-1;
+    //~ UpdateStatus($g_CAN_Rev_Msg_Num);
+    if($g_CAN_Rev_Msg_Num > 0)
+    {
+	$CAN_Rev_Msg = USBCANFD_Receive($g_ZLG_USBCAN_Channel_Handle);//1.channel handle
+	//~ UpdateStatus($CAN_Rev_Msg);
+    }
+    //~ UpdateStatus("===============ZLG_CANFD_Rev end==============");
+    return;
+}
+function ZLG_CAN_Send()
+{
+    //~ UpdateStatus("===============ZLG_CAN_Send begin==============");
+    $Send_Result = false;
+    $Loop = 0;
+    while($Loop < 3 && !$Send_Result)
+    {
+      $show_CAN_Send_Msg="CAN_Send_Msg = "+$CAN_Send_Msg;
+      UpdateStatus ($show_CAN_Send_Msg);
+      ($SendCount)  = USBCAN_Transmit($g_ZLG_USBCAN_Channel_Handle,$canID,0,$CAN_Send_Msg,0);//1.channel handle;2.CAN ID;3.extend frame-1/standard frame-0,4.CAN Data,5.CAN-0/CANFD-1;
+      UpdateStatus($SendCount);
+      $Send_Result = $SendCount >= 1;
+      $Loop = $Loop + 1;
+      if(!$Send_Result)
+      {
+	$show_CAN_Send_Msg="CAN_Send_Msg_failed = "+$CAN_Send_Msg+"; Handle="+$g_ZLG_USBCAN_Channel_Handle;
+	UpdateStatus ($show_CAN_Send_Msg);
+	call Read_ZLG_USBCANFD_Info();
+	SleepMilliseconds(5);
+      }
+    }
+    //~ UpdateStatus("===============ZLG_CAN_Send end==============");
+    return;
+}
+function ZLG_CANFD_Send()
+{
+    //~ UpdateStatus("===============ZLG_CANFD_Send begin==============");
+    $Send_Result = false;
+    $Loop = 0;
+    //~ UpdateStatus($canID);
+    while($Loop < 3 && !$Send_Result)
+    {
+      //~ //1.channel handle;
+      //~ 2.CAN ID;
+      //~ 3.extend frame-1/standard frame-0,
+      //~ 4.CAN Data,,
+      //~ 5.1-Aceelerate/0-not Accelerate,
+      //~ 6.CAN-0/CANFD-1;
+      ($SendCount)  = USBCANFD_Transmit($g_ZLG_USBCAN_Channel_Handle,$canID,0,$CAN_Send_Msg,1,1);
+      //~ UpdateStatus($SendCount);
+      $Send_Result = $SendCount >= 1;
+      $Loop = $Loop + 1;
+      
+      if(!$Send_Result)
+      {
+	  SleepMilliseconds(20);
+	  UpdateStatus("ZLG_CANFD_Send Error");
+      }
+    }
+    //~ UpdateStatus("===============ZLG_CANFD_Send end==============");
+    return;
+}
+function Add_ZLG_USBCANFD_AutoCAN()
+{
+     UpdateStatus("====== MCU_EOL_HeartBeat start=========");
+    //~ $canID = "0x721";
+    //~ $CAN_Send_Msg = "02 3E 80 00 00 00 00 00";
+    //~ $CAN_Rev_ExpMsg = "50 03";
+  
+    UpdateStatus("====== Add_ZLG_USBCANFD_AutoCAN start=========");
+    ($Result) = USBCANFD_AddSingleAutoSendFrame($g_ZLG_USBCAN_Device_Handle,0,0,0,"0x721",0,"02 3E 80 00 00 00 00 00",1000);//1.device handle;2.channel index;3.frame index;4.CAN-0/CANFD-1;5.CANID;6.extend frame-1/standard frame-0;7.CAN Data;8.Timer interval(ms)
+    UpdateStatus($Result);
+    UpdateStatus("====== Add_ZLG_USBCANFD_AutoCAN End=========");
+    return;  
+}
+function Cancel_ZLG_USBCANFD_AutoCANFD()
+{
+    UpdateStatus("====== Cancel_ZLG_USBCANFD_AutoCANFD start=========");
+    ($Result) = USBCANFD_CancelSingleAutoSendFrame($g_ZLG_USBCAN_Device_Handle,0,0,0,"001",0,"00 01 02 03 04 05 06 07",500);//1.device handle;2.channel index;3.frame index;4.CAN-0/CANFD-1;5.CANID;6.extend frame-1/standard frame-0;7.CAN Data;8.Timer interval(ms)
+    UpdateStatus($Result);
+    UpdateStatus("====== Cancel_ZLG_USBCANFD_AutoCANFD End=========");
+    return;  
+}
+function ZLG_USBCANFD_AutoCAN_Enable()
+{
+    UpdateStatus("====== ZLG_USBCANFD_AutoCAN_Enable start=========");
+    ($Result) = USBCANFD_AutoCAN_Enable($g_ZLG_USBCAN_Device_Handle,0);
+    UpdateStatus($Result);
+    UpdateStatus("====== ZLG_USBCANFD_AutoCAN_Enable End=========");
+    return;  
+}
+function ZLG_USBCANFD_AutoCAN_Disable()
+{
+    UpdateStatus("====== ZLG_USBCANFD_AutoCAN_Disable start=========");
+    ($Result) = USBCANFD_AutoCAN_Disable($g_ZLG_USBCAN_Device_Handle,0);
+    UpdateStatus($Result);
+    UpdateStatus("====== ZLG_USBCANFD_AutoCAN_Disable End=========");
+    return;  
+}
+
+
+//~~~~~~~~~~~~~~~~Zlg CAN Channel 2~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+function ZLG_CAN_CH2_Rev()
+{
+     
+  //~ UpdateStatus("===============ZLG_CAN_Rev begin==============");
+    $CAN_Rev_Msg = "";
+    $g_CAN_Rev_Msg_Num = USBCAN_GetReceiveNum($g_ZLG_USBCAN_Channel_Handle2,0);//1.channel handle;2.CAN-0/CANFD-1;
+    //~ UpdateStatus($g_CAN_Rev_Msg_Num);
+    if($g_CAN_Rev_Msg_Num > 0)
+    {
+      $CAN_Rev_Msg = USBCAN_Receive($g_ZLG_USBCAN_Channel_Handle);//channel handle
+      //~ UpdateStatus($CAN_Rev_Msg);
+      $show_CAN_Rev_Msg="CAN_Rev_Msg = "+$CAN_Rev_Msg;
+      UpdateStatus ($show_CAN_Rev_Msg);
+    }
+    //~ UpdateStatus("===============ZLG_CAN_Rev end==============");
+    
+    return;
+}
+function ZLG_CANFD_CH2_Rev()
+{
+    UpdateStatus("===============ZLG_CANFD_Rev begin==============");
+    $CAN_Rev_Msg = "";
+    $g_CAN_Rev_Msg_Num = USBCANFD_GetReceiveNum($g_ZLG_USBCAN_Channel_Handle2,1);//1.channel handle;2.CAN-0/CANFD-1;
+    UpdateStatus($g_CAN_Rev_Msg_Num);
+    if($g_CAN_Rev_Msg_Num > 0)
+    {
+	$CAN_Rev_Msg = USBCANFD_Receive($g_ZLG_USBCAN_Channel_Handle);//1.channel handle
+	UpdateStatus($CAN_Rev_Msg);
+    }
+    UpdateStatus("===============ZLG_CANFD_Rev end==============");
+    return;
+}
+function ZLG_CAN_CH2_Send()
+{
+    //~ UpdateStatus("===============ZLG_CAN_Send begin==============");
+    $Send_Result = false;
+    $Loop = 0;
+    while($Loop < 3 && !$Send_Result)
+    {
+      $show_CAN_Send_Msg="CAN_Send_Msg = "+$CAN_Send_Msg;
+      UpdateStatus ($show_CAN_Send_Msg);
+      ($SendCount)  = USBCAN_Transmit($g_ZLG_USBCAN_Channel_Handle2,$canID,0,$CAN_Send_Msg,0);//1.channel handle;2.CAN ID;3.extend frame-1/standard frame-0,4.CAN Data,5.CAN-0/CANFD-1;
+      UpdateStatus($SendCount);
+      $Send_Result = $SendCount >= 1;
+      $Loop = $Loop + 1;
+      if(!$Send_Result)
+      {
+	$show_CAN_Send_Msg="CAN_Send_Msg_failed = "+$CAN_Send_Msg+"; Handle="+$g_ZLG_USBCAN_Channel_Handle;
+	UpdateStatus ($show_CAN_Send_Msg);
+	call Read_ZLG_USBCANFD_Info();
+	SleepMilliseconds(5);
+      }
+    }
+    //~ UpdateStatus("===============ZLG_CAN_Send end==============");
+    return;
+}
+function ZLG_CANFD_CH2_Send()
+{
+    UpdateStatus("===============ZLG_CANFD_Send begin==============");
+    $Send_Result = false;
+    $Loop = 0;
+    UpdateStatus($canID);
+    while($Loop < 3 && !$Send_Result)
+    {
+      //~ //1.channel handle;
+      //~ 2.CAN ID;
+      //~ 3.extend frame-1/standard frame-0,
+      //~ 4.CAN Data,,
+      //~ 5.1-Aceelerate/0-not Accelerate,
+      //~ 6.CAN-0/CANFD-1;
+      ($SendCount)  = USBCANFD_Transmit($g_ZLG_USBCAN_Channel_Handle2,$canID,0,$CAN_Send_Msg,1,1);
+      UpdateStatus($SendCount);
+      $Send_Result = $SendCount >= 1;
+      $Loop = $Loop + 1;
+      
+      if(!$Send_Result)
+      {
+	  SleepMilliseconds(20);
+	  UpdateStatus("ZLG_CANFD_Send Error");
+      }
+    }
+    UpdateStatus("===============ZLG_CANFD_Send end==============");
+    return;
+}
+
+
+
+
+
+
+
+
+
+
+
+function CAN_21-28Frame_Send()
+{
+  //和start rountine命令不能超过40毫秒.
+  //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 00 00 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    call ZLG_CAN_Send();//send CAN msg
+  
+    
+  return;
+}
+
+function CAN_WIFI_21-28Frame_Send()
+{
+  //和start rountine命令不能超过40毫秒.
+  //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+  
+  //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>WIFI参数描述<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  
+	    //param count(占1byte): 代表参数个数，仅带ssid为0x01，带ssid和password为0x02
+	    //ssid length(占1byte):ssid长度,不用转换
+	    //ssid : 占ssid length个byte，字符ascii值
+	    //password length(占1byte):password长度,不用转换
+	    //password : 占password length个byte，字符ascii值
+    $SSID = "XP-AUTO";//58 50 2d 41 55 54 4f
+    $PassWord = "xiaopengautoxp";//78 69 61 6f 70 65 6e 67 61 75 74 6f 78 70
+  
+  
+    $CAN_Send_Msg = "21 02 07 58 50 2d 41 55";	//必须要在startRoutine后50ms之内发XP
+
+      //~ $CAN_Send_Msg = "21 02 03 6b 31 6d 08 6b";	//6b 31 6d
+ call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    
+
+  $CAN_Send_Msg = "22 54 4f 14 78 69 61 6f";//xp
+
+      //6b 69 6d 31 32 33 34 35
+    //~ $CAN_Send_Msg = "22 69 6d 31 32 33 34 35";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+
+  
+   //~ $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+  $CAN_Send_Msg = "23 70 65 6e 67 61 75 74";//xp
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    //~ $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+
+  $CAN_Send_Msg = "24 6f 78 70 00 00 00 00";//xp
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "28";
+    call ZLG_CAN_Send();//send CAN msg
+  
+    
+  return;
+}
+
+function CAN_5GNET_21-28Frame_Send()
+{
+  //和start rountine命令不能超过40毫秒.
+  //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+  
+//4G/5G Tbox：172.20.1.44
+//CDCU_SOC_CUD:172.20.1.45
+//CDCU_SOC_ICM:172.20.1.40
+//CDCU_MCU:172.20.1.33
+//RDCU:172.20.1.32VVS
+//LDCU"172.20.1.44
+//XPU_MCU:172.20.1.22
+      $CAN_Send_Msg = "21 01 AC 14 01 2C 00 00";
+ call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    
+
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+
+  
+   $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "28";
+    call ZLG_CAN_Send();//send CAN msg
+  
+    
+  return;
+}
+
+function CAN_XPUNET_21-28Frame_Send()
+{
+  //和start rountine命令不能超过40毫秒.
+  //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+  
+//4G/5G Tbox：172.20.1.44
+//CDCU_SOC_CUD:172.20.1.45
+//CDCU_SOC_ICM:172.20.1.40
+//CDCU_MCU:172.20.1.33
+//RDCU:172.20.1.32VVS
+//LDCU"172.20.1.44
+//XPU_MCU:172.20.1.22
+      $CAN_Send_Msg = "21 01 AC 14 01 12 00 00";
+ call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    
+
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+
+  
+   $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "28";
+    call ZLG_CAN_Send();//send CAN msg
+  
+    
+  return;
+}
+
+function CAN_LeftNET_21-28Frame_Send()
+{
+  //和start rountine命令不能超过40毫秒.
+  //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+  
+//4G/5G Tbox：172.20.1.44
+//CDCU_SOC_CUD:172.20.1.45
+//CDCU_SOC_ICM:172.20.1.40
+//CDCU_MCU:172.20.1.33
+//RDCU:172.20.1.32VVS
+//LDCU"172.20.1.44
+//XPU_MCU:172.20.1.22
+      $CAN_Send_Msg = "21 01 AC 14 01 DF 00 00";
+ call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    
+
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+
+  
+   $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "28";
+    call ZLG_CAN_Send();//send CAN msg
+  
+    
+  return;
+}
+
+function CAN_RightNET_21-28Frame_Send()
+{
+  //和start rountine命令不能超过40毫秒.
+  //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+  
+//4G/5G Tbox：172.20.1.44
+//CDCU_SOC_CUD:172.20.1.45
+//CDCU_SOC_ICM:172.20.1.40
+//CDCU_MCU:172.20.1.33
+//RDCU:172.20.1.32VVS
+//LDCU"172.20.1.44
+//XPU_MCU:172.20.1.22
+      $CAN_Send_Msg = "21 01 AC 14 01 20 00 00";
+ call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    
+
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+
+  
+   $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "28";
+    call ZLG_CAN_Send();//send CAN msg
+  
+    
+  return;
+}

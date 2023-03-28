@@ -1,0 +1,171 @@
+
+
+
+call RDCU_EOL_Command_Header_Initialize();
+call Generate_DI_Command();
+
+
+
+End;
+
+/////////////////////////////
+//自动生成DI命令
+function Generate_DI_Command()
+{
+    UpdateStatus("---->> Generate DI Command");
+    $DI_RID="C0 80 00 01 02 03 04 05 06 07 08 09 0A 11 12 13 14 15 16 17 18 19 1A";
+    $Initial_DI_Command=$DI_RoutineControl_Header+$Command_spacing+$DI_RID;			//生成初始命令字符串
+    $Type_Parameter_Transform_Command=$Initial_DI_Command;
+    call Command_Transform_CANMode();							//将初始命令转化为CAN的多帧命令
+   
+    
+   return;
+}
+
+
+
+/////////////////////////////////////////////////////
+//// 定义
+//////////////////////////////////////////
+
+//定义RDCU EOL产品中命令报头
+function RDCU_EOL_Command_Header_Initialize()
+{
+    $Single_Frame_Length_Check_Limit=63;		//CAN的长度为8Byte，去除帧头定义，剩下的数据长度limit为7byte
+    $Default_One_Frame_Full_Length=64;		//默认一个CAN Frame长度设置为8
+    
+    $Command_spacing=" ";
+    $Multiple_Command_interval="\r\n";
+    $DI_RoutineControl_Header="31 03";
+    $DI_RID="C0 80";
+    return;
+}
+
+//分析原始命令，将其转化为可以用于多帧发送的CAN命令
+//输入命令格式  	$Type_Parameter_Transform_Command _Inout, 字符串，原始的命令输入参数
+//输出命令格式	$Type_Parameter_Transform_Command_Output，字符串，不同组命令之间使用;进行区分
+function Command_Transform_CANMode()
+{
+    UpdateStatus("---->>Transform the command into the multiple frames");
+    
+    $Type_Parameter_Command_Length=StringLength($Type_Parameter_Transform_Command);
+    $Type_Parameter_Command_Length= $Type_Parameter_Command_Length+1;		//补上最后一个命令空格,以可以准确定义命令
+    $Type_Parameter_Command_Length=Divide($Type_Parameter_Command_Length,3);
+    
+    $Display="The previsous initial command is:"+$Type_Parameter_Transform_Command+"; The length of it is "+$Type_Parameter_Command_Length;
+    UpdateStatus($Display);
+    if($Type_Parameter_Command_Length<=$Single_Frame_Length_Check_Limit)
+    {
+	call Command_Analysis_To_Single_Frame();		// 命令长度小于限制值时，输出单帧命令
+    }
+    if($Type_Parameter_Command_Length>$Single_Frame_Length_Check_Limit)
+    {
+	call Command_Analysis_Separate_To_Frames();		// 命令长度大于限制值时，输出多帧命令
+    }
+    UpdateStatus($Type_Parameter_Transform_Command_Output);
+    return;
+}
+
+
+//将Command 自动分解成多帧 CAN命令，可以用于
+function Command_Analysis_Separate_To_Frames()
+{
+    //预留以下3行函数，可以重新根据命令分析命令长度，也可以直接从外部输入$Type_Parameter_Command_Length 参数
+    //~ $Type_Parameter_Command_Length=StringLength($Type_Parameter_Transform_Command);
+    //~ $Type_Parameter_Command_Length= $Type_Parameter_Command_Length+1;		//补上最后一个命令空格
+    //~ $Type_Parameter_Command_Length=Divide($Type_Parameter_Command_Length,3);
+    
+    $Multiple_Frames_Number=Divide($Type_Parameter_Command_Length,$Single_Frame_Length_Check_Limit);
+    $Multiple_Frames_Number=Ceiling($Multiple_Frames_Number);
+    $All_Frames_Require_Length=Multiply($Multiple_Frames_Number,7);
+    $Remain_End_Align_Command_Length=Subtract($All_Frames_Require_Length,$Type_Parameter_Command_Length)
+   
+    $Display="The out put command will be "+$Multiple_Frames_Number+" frames";
+    UpdateStatus($Display);
+    
+    $Type_Parameter_Transform_Command_Output="";			//Initialize the command  to empty
+    $Current_Frames_Number=0;							// 从起始帧0帧开始计数
+    $Multiple_Frames_Number_Limit= Subtract($Multiple_Frames_Number,1);		//其实帧从0开始计数，最高帧limit应该减一
+Label Separate_To_Frames:
+    //首帧处理
+    if($Current_Frames_Number==0)
+    {
+	$Command_Length_Hex_Header="10";
+	$Start_Index=Multiply($Current_Frames_Number,21);			////7个byte的CAN命令串， 每次缩进为21
+	$One_Line_Command=StringSub($Type_Parameter_Transform_Command,$Start_Index,20);    //7个byte的CAN命令串， string下的长度为20
+	$Type_Parameter_Transform_Command_Output=$Type_Parameter_Transform_Command_Output+$Command_Length_Hex_Header+$Command_spacing+$One_Line_Command;
+    }
+    
+    if(($Current_Frames_Number>0)&&($Current_Frames_Number<$Multiple_Frames_Number_Limit))
+    {
+	//中间帧为固定格式
+	$Current_Frames_Number_Mod= Mod($Current_Frames_Number,16);
+	$Command_Length_Int_Header=Add(32,$Current_Frames_Number_Mod);
+	$Command_Length_Hex_Header=IntegerToHexString($Command_Length_Int_Header,2);
+	
+	UpdateStatus($Command_Length_Int_Header);
+
+	$Start_Index=Multiply($Current_Frames_Number,21);			////7个byte的CAN命令串， 每次缩进为21
+	$One_Line_Command=StringSub($Type_Parameter_Transform_Command,$Start_Index,20);    //7个byte的CAN命令串， string下的长度为20
+	$Type_Parameter_Transform_Command_Output=$Type_Parameter_Transform_Command_Output+$Multiple_Command_interval+$Command_Length_Hex_Header+$Command_spacing+$One_Line_Command;
+    }
+    if($Current_Frames_Number==$Multiple_Frames_Number_Limit)
+    {
+	//最后一帧需要考虑补帧
+	$Current_Frames_Number_Mod= Mod($Current_Frames_Number,16);
+	$Command_Length_Int_Header=Add(32,$Current_Frames_Number_Mod);
+	$Command_Length_Hex_Header=IntegerToHexString($Command_Length_Int_Header,2);
+
+	$Start_Index=Multiply($Current_Frames_Number,21);			////7个byte的CAN命令串， 每次缩进为21
+	$One_Line_Command=StringSub($Type_Parameter_Transform_Command,$Start_Index,20);    //7个byte的CAN命令串， string下的长度为20
+	
+	$End_Align_Command_String="";
+	Label End_Align_Command_Check_For_MultipleMode:
+	    if($Remain_End_Align_Command_Length>0)			//循环判断后续长度是否需要继续添加多余命令
+	    {
+		$End_Align_Command_String=$End_Align_Command_String+" AA";
+		$Remain_End_Align_Command_Length=$Remain_End_Align_Command_Length-1;
+		goto End_Align_Command_Check_For_MultipleMode;
+	    }
+	$Type_Parameter_Transform_Command_Output=$Type_Parameter_Transform_Command_Output+$Multiple_Command_interval+$Command_Length_Hex_Header+$Command_spacing+$One_Line_Command+$End_Align_Command_String;
+    }
+	
+    $Current_Frames_Number=$Current_Frames_Number+1;  //必须在所有条件检查完后在进行当前Frame递增
+    if($Current_Frames_Number<=$Multiple_Frames_Number_Limit)
+    {
+	goto Separate_To_Frames;
+    }
+    
+    return;
+}
+
+
+//将Command 自动分解成多帧 CAN命令，可以用于
+// input:  $Type_Parameter_Command_Length 			命令长度
+// input:  $Type_Parameter_Transform_Command	 	初始命令
+function Command_Analysis_To_Single_Frame()
+{
+    //预留以下3行函数，可以重新根据命令分析命令长度，也可以直接从外部输入$Type_Parameter_Command_Length 参数
+    //~ $Type_Parameter_Command_Length=StringLength($Type_Parameter_Transform_Command);
+    //~ $Type_Parameter_Command_Length= $Type_Parameter_Command_Length+1;		//补上最后一个命令空格
+    //~ $Type_Parameter_Command_Length=Divide($Type_Parameter_Command_Length,3);
+    
+    UpdateStatus("The out put command will be 1 frames");
+    $Command_Length_Hex_Header=IntegerToHexString($Type_Parameter_Command_Length,2);
+    
+    $Remain_End_Align_Command_Length=$Default_One_Frame_Full_Length-$Type_Parameter_Command_Length-1;	//减去命令字符串，在减去长度抬头
+    $End_Align_Command_String="";
+    $Remain_End_Align_Command_Length=$Remain_End_Align_Command_Length;
+
+Label End_Align_Command_Check:
+    if($Remain_End_Align_Command_Length>0)			//循环判断后续长度是否需要继续添加多余命令
+    {
+	$End_Align_Command_String=$End_Align_Command_String+" AA";
+	$Remain_End_Align_Command_Length=$Remain_End_Align_Command_Length-1;
+	goto End_Align_Command_Check;
+    }
+    
+    $Type_Parameter_Transform_Command_Output=$Command_Length_Hex_Header+$Command_spacing+$Type_Parameter_Transform_Command+$End_Align_Command_String;
+    
+    return;
+}

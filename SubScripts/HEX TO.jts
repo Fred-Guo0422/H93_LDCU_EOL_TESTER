@@ -1,0 +1,3 @@
+$Test = "002F";
+$value = HexStringToFloat($Test);
+UpdateStatus($value);

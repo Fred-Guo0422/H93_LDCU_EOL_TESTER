@@ -1,0 +1,338 @@
+function CDCU_AI_Vol_all_Check()
+{
+  SetTestName("5.7 MCU_Measure_AI_Voltage");
+  call MIC8V_MCU_SENSE();
+  call VREG_S1C_S2C_S3C_0P752();
+  call WIFI_RF0_ANT_DET();
+  call WIFI_RF1_ANT_DET();
+  call B1+_DET();
+  call  SW_VDDO33();
+  call SW_VDDO18();
+  call SW_VDDO15();
+  call Q2112_P9_DVDD09();
+  call Q2112_P10_DVDD09();
+  return;
+}
+
+function MIC8V_MCU_SENSE()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "MIC8V_MCU_SENSE";
+  //SetTestName($measureName);
+  UpdateStatus($measureName);
+
+  $MeasurementName = "MIC8V_MCU_SENSE";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "00 01";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  //~ $Str_Ext21_28_len = StringLength( $Str_Ext21_28);
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+  $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 1.8;
+  $LSL=0.01;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  return;
+}
+
+function VREG_S1C_S2C_S3C_0P752()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "VREG_S1C_S2C_S3C_0P752";
+  //SetTestName($measureName);
+  UpdateStatus($measureName);
+
+  $MeasurementName = "VREG_S1C_S2C_S3C_0P752";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "00 09";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+  $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 1.03;
+  $LSL=0;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  
+  return;
+}
+function WIFI_RF0_ANT_DET()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "WIFI_RF0_ANT_DET";
+  //SetTestName($measureName);
+  UpdateStatus($measureName);
+
+  $MeasurementName = "WIFI_RF0_ANT_DET";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "01 01";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+  $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 3.63;
+  $LSL=2.97;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  return;
+}
+
+function WIFI_RF1_ANT_DET()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "WIFI_RF1_ANT_DET";
+  //SetTestName($measureName);
+  UpdateStatus($measureName);
+
+  $MeasurementName = "WIFI_RF1_ANT_DET";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "02 05";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+   $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 3.63;
+  $LSL=2.97;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  
+  return;
+}
+function B1+_DET()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "B1+_DET";
+  //SetTestName($measureName);
+  UpdateStatus($measureName);
+
+  $MeasurementName = "B1+_DET";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "02 09";
+  call CDCU_AI_Vol_Frame21_28_Send();
+
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+  $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 14.5;
+  $LSL=12;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+
+  
+  return;
+}
+
+function SW_VDDO33()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "SW_VDDO33";
+  //SetTestName($measureName);
+  UpdateStatus($measureName);
+
+  $MeasurementName = "SW_VDDO33";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "02 0C";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+    $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 3.63;
+  $LSL=2.97;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  return;
+}
+
+function SW_VDDO18()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "SW_VDDO18";
+  //SetTestName($measureName);
+  //~ UpdateStatus($measureName);
+
+  $MeasurementName = "SW_VDDO18";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "02 0D";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+     $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 1.89;
+  $LSL=1.7;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  return;
+}
+
+function SW_VDDO15()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "SW_VDDO15";
+  //SetTestName($measureName);
+  //~ UpdateStatus($measureName);
+
+  $MeasurementName = "SW_VDDO15";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "02 0E";
+  call CDCU_AI_Vol_Frame21_28_Send();
+
+    $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+     $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 1.65;
+  $LSL=1.35;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  return;
+}
+function Q2112_P9_DVDD09()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "Q2112_P9_DVDD09";
+  //SetTestName($measureName);
+  //~ UpdateStatus($measureName);
+
+  $MeasurementName = "Q2112_P9_DVDD09";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "04 04";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+     $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 0.99;
+  $LSL=0.8;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  return;
+}
+
+function Q2112_P10_DVDD09()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $measureName= "Q2112_P10_DVDD09";
+ // SetTestName($measureName);
+  //~ UpdateStatus($measureName);
+
+  $MeasurementName = "Q2112_P10_DVDD09";//1 5G TBox 以太网 172.20.1.44
+  $AIVol = "04 06";
+  call CDCU_AI_Vol_Frame21_28_Send();
+  $TrimmedString = StringTrim($Str_Ext21_28);
+  $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+  $Str_Ext21_28 = StringReplace($Str_Ext21_28," ","");
+  $Str_Ext21_28 = HexStringToFloat($Str_Ext21_28);
+     $Str_Ext21_28 =  $Str_Ext21_28/1000;
+  $USL= 0.99;
+  $LSL=0.8;
+  RecordMeasurementWithLimits($measureName, $Str_Ext21_28, "V", true, $LSL, $USL, true);
+  return;
+}
+
+
+function CDCU_AI_Vol_Frame21_28_Send()
+{
+    //##########连接 XP-AUTO 无线路由###########
+   $canID = "0x721";
+  
+    $AIVolRes = false;
+    $AIVolLoop = 0;
+    while($AIVolLoop < 5 && !$AIVolRes)
+    {
+      
+    $CAN_Send_Msg = "10 3E 31 01 C1 09 02 01"; //31 01 C1 09 02 01 00 01
+    $CAN_Rev_ExpMsg = "71 01 C1 09";	
+   
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+     //~ $AIVol = "00 01";
+    //~ $CAN_Send_Msg = "31 01 C1 09 02 01 00 01";
+    $CAN_Send_Msg = "21 "+ $AIVol +" 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    
+    SleepMilliseconds(1500);//间隔时间建议1000ms
+    //~ call ZLG_CAN_Rev();
+
+    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    
+    $CAN_Send_Msg = "04 31 03 C1 09 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 09 04 02 01";	//71 03 C0 09 04 02 02 <status1.2.3...>
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    //~ $CAN_Rev_ExpMsg = "XPENGF30";	//最后一个帧是28开头
+  
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev();
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    
+  $AIVolRes = $Result;
+  $AIVolLoop = $AIVolLoop + 1;
+      if(!$AIVolRes)
+	{
+	    SleepMilliseconds(200);
+	}
+  }
+  $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+  $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ",3); 
+  $CAN_Rev_Msg_FirstFrame = $Str1 +$Str2;
+  $ShowFirstFrame= "CAN_Rev_Msg_FirstFrame="+$CAN_Rev_Msg_FirstFrame;
+  UpdateStatus($ShowFirstFrame);
+  
+  $CAN_Rev_ExpMsg = "71 03 C1 09 04 02 01";	//71 03 C0 09 04 02 02 <Result> Result(1 个字节):1, 0x01: Running; 2, 0x02: Pass; 3, 0x03: Fail
+  $Result = StringContains($CAN_Rev_Msg_FirstFrame,$CAN_Rev_ExpMsg);
+  RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg_FirstFrame, "Bool", true, $Result);
+  
+  $Str0 = StringCat("ID:07A1,data:21 ", $Str2);//更新:利用变量决定21后面一位的值.
+  $Str21 = StringParse($CAN_Rev_Msg, $Str0, ";");//StringCut($CAN_Rev_Msg, $Str0, 19);//切21帧
+  $Str22 = StringParse($CAN_Rev_Msg, "ID:07A1,data:22 ", ";");//切22帧
+  $Str23 = StringParse($CAN_Rev_Msg, "ID:07A1,data:23 ", ";");
+  $Str24 = StringParse($CAN_Rev_Msg, "ID:07A1,data:24 ", ";");
+  $Str25 = StringParse($CAN_Rev_Msg, "ID:07A1,data:25 ", ";");
+  $Str26 = StringParse($CAN_Rev_Msg, "ID:07A1,data:26 ", ";");
+  $Str27 = StringParse($CAN_Rev_Msg, "ID:07A1,data:27 ", ";");
+  $Str28 = StringParse($CAN_Rev_Msg, "ID:07A1,data:28 ", ";");
+  $Str_Ext21_28 = $Str21+$Str22+$Str23+$Str24+$Str25+$Str26+$Str27+$Str28;
+  $ShowStr_Ext21_28= "Str_Ext21_28="+$Str_Ext21_28;
+  UpdateStatus($ShowStr_Ext21_28);
+  return;
+}
+  
