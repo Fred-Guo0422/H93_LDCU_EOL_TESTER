@@ -16,7 +16,7 @@
 #include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\Sub_DIO.jts">
 #include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\Sub_DAQ6510.jts">
 #include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\FIxtureControl.jts">
-
+#include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\RIGOL_DG5072.jts">
 SetFinalizeFunction("PostUUT");
 SetFailFunction("OnFail");
 SetAbortFunction("OnAbort");
@@ -102,7 +102,7 @@ function Initialize()
   
   //~ call LoadBoxOpen();
   //~ call CanHubOpen();
-  //~ call Init_DG5072();
+  //~ call RIGOL_DG5072_Initialize();
   call Fixtures_Power_Controler_Open();
   call Fixtures_PowerOn();
   call Cylinder_Initialize();
@@ -116,7 +116,7 @@ function GlobalCleanup()
   call  Fixtures_Power_Controler_Close();
   call Close_IT6722();
   call Close_DM6510();
-  //~ call Close_DG5072();
+  //~ RIGOL_DG5072_Close();
   call Cylinder_Initialize();
   return;
 }
@@ -809,35 +809,6 @@ function Init_DAQ6509()
 }
 
 
-function Init_DG5072()
-{
-    //input:
-	    //1,$DG5072_Port
-    //Output:
-	    //1,$g_DAQ6510_Handle
-  
-      UpdateStatus("===================Init DG5072=====================");
-      $DG5072_Port = ReadIniFile($g_System_Config_File,"HW_Config","DG5072_Port");
-      UpdateStatus($DG5072_Port);
-      $timeOut = 2000;          // Time out = 2 seconds.
-      $g_DG5072_Handle = IviVISA_Open($DG5072_Port,$timeOut);
-      IviVISA_Write($g_DG5072_Handle, "*IDN?\r\n");
-      $DMM6500_ReturnString = IviVISA_Read($g_DG5072_Handle);
-      UpdateStatus($DMM6500_ReturnString);
-      IviVISA_Write($g_DG5072_Handle, "*RST\r\n");
-      SleepMilliseconds(50);
-      IviVISA_Write($g_DG5072_Handle, "*CLS");
-      SleepMilliseconds(50);
-      $g_DAQ6510_Read = ":READ?\r\n";
-      UpdateStatus($g_DAQ6510_Handle);
-      UpdateStatus("===================End Init DG5072=====================");
-      return;
-}
-function Close_DG5072()
-{
-   IviVISA_Close($g_DG5072_Handle);
-  return;
-}
 function LoadBoxOpen()
 {
   $g_LoadBox_Port = ReadIniFile($g_System_Config_File,"HW_Config","LoadBoxPort");

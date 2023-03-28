@@ -1,0 +1,103 @@
+﻿
+$RIGOL_DG5072_VISA="USB0::0x1AB1::0x0640::DG5T250800024::INSTR";
+call RIGOL_DG5072_Initialize();
+
+
+$Generate_Signal_Freq=100;		//设置频率，以HZ为单位
+$Generate_Signal_Amp=4.2;		//设置幅值，以Vpp为单位
+$Generate_Signal_DCYCle=25;		//设置占空比，10Mhz下占空比范围20~80
+call RIGOL_DG5072_Channel1_Output();
+
+OperatorPrompt("OK","");
+
+call RIGOL_DG5072_Channel1_OutOff();
+
+call RIGOL_DG5072_Close();
+
+End;
+
+function RIGOL_DG5072_Initialize()								//Initial Instruments
+{
+    UpdateStatus("......RIGOL_DG5072_Initialize");
+    $RIGOL_DG5072_Handle = NIVISA_Open($RIGOL_DG5072_VISA);		//连接仪器
+    NIVISA_SetTimeout($RIGOL_DG5072_Handle, 2000);				// 设置延时
+    NIVISA_Write($RIGOL_DG5072_Handle,"*RST\n");					//Reset仪器
+    SleepMilliseconds(500);									//RIGOL_DG5072 在RST后必须等待一段时间才能继续发命令，否则会导致仪器通讯卡死 
+    NIVISA_Write($RIGOL_DG5072_Handle,"*IDN?\n");					//获取识别号
+    $RIGOL_DG5072_Buffer = NIVISA_Read($RIGOL_DG5072_Handle);		// 回读信息
+    UpdateStatus($RIGOL_DG5072_Buffer);
+    $RIGOL_DG5072_ID_Flag = StringContains($RIGOL_DG5072_Buffer,"DG5072");
+    if(!$RIGOL_DG5072_ID_Flag)
+    {
+	Abort("RIGOL_DG5072 Query ID Failed!");
+    }
+    if($RIGOL_DG5072_ID_Flag)
+    {
+	UpdateStatus("RIGOL_DG5072 Connect Sucessful\n");
+    }
+    NIVISA_Write($RIGOL_DG5072_Handle,"*CLS\n"); 
+    SleepMilliseconds(100);	
+
+    NIVISA_Write($RIGOL_DG5072_Handle,"OUTPut1:IMPedance INFinity\n"); 		//初始化将通道输出阻抗设置高阻态，若设置阻值，需要考虑产生波形的幅值分压情况
+    NIVISA_Write($RIGOL_DG5072_Handle,"OUTPut2:IMPedance INFinity\n"); 
+    NIVISA_Write($RIGOL_DG5072_Handle,"OUTPut1:ATTenuation 1X\n"); 		//初始化通道的衰减系数，不衰减
+    NIVISA_Write($RIGOL_DG5072_Handle,"OUTPut2:ATTenuation 1X\n"); 
+    return;
+}
+
+
+//Input:   	$Generate_Signal_Freq	产生的信号频率，以Hz为单位
+//Input	$Generate_Signal_Amp	产生的信号赋值，以VPP为单位
+//Input	$Generate_Signal_DCYCle	产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+function RIGOL_DG5072_Channel1_Output()								//Initial Instruments
+{
+    UpdateStatus("......RIGOL_DG5072 Channel1 Output");
+    
+    $Generate_Signal_Offset=0;		//默认的信号幅值偏差, 默认为0V
+    $Generate_Signal_Phase=0;		//默认的信号角度偏差, 默认为0°
+    
+    $Set_Channel_Number=1;		//预留的通道设置位致
+    
+    //[:SOURce<n>]:APPLy:SQUare [<freq>[,<amp>[,<offset>[,<phase>]]]]      
+    //● <freq>：1 μHz至120 MHz，单位默认为“Hz”。
+    //● <amp>：受阻抗和频率/周期设置的限制，详见本产品用户手册。单位默认为“Vpp”。
+    //● <offset>：受阻抗和幅度/高电平设置的限制，详见本产品用户手册。单位默认为“Vdc”。
+    //● <phase>：0°至360°，单位默认为“°”。
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":APPly:SQUare "+$Generate_Signal_Freq+","+$Generate_Signal_Amp+","+$Generate_Signal_Offset+","+$Generate_Signal_Phase;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":FUNCtion:SQUare:DCYCle "+$Generate_Signal_DCYCle;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+ 
+    $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" ON";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    return;
+}
+
+function RIGOL_DG5072_Channel1_OutOff()								//Initial Instruments
+{
+    UpdateStatus("......RIGOL_DG5072 Channel1 OutOff");
+    
+    $Set_Channel_Number=1;		//预留的通道设置位致
+    
+    $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" OFF";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    return;
+}
+
+function RIGOL_DG5072_Close()
+{
+    NIVISA_Write($RIGOL_DG5072_Handle,":SYST:KLOC OFF\n");			//解锁仪器前面板，可以对仪器进行前面板操作
+    UpdateStatus("......RIGOL_DG5072_Connect Close");
+    NIVISA_Close($RIGOL_DG5072_Handle);
+    return;
+}
+    
