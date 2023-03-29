@@ -17,34 +17,39 @@
 #include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\Sub_DAQ6510.jts">
 #include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\FIxtureControl.jts">
 #include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\RIGOL_DG5072.jts">
+
+//~ $g_Testdebug=true;  ///Global debugging flag
 SetFinalizeFunction("PostUUT");
 SetFailFunction("OnFail");
 SetAbortFunction("OnAbort");
 call PreUUT();
-OperatorPrompt("Debug", "OK");
 //~ SleepMilliseconds(50);
-End;
-SetTestName("Get and Set Product Parameter");
-call into_1001();
-call into_1003();
-call Read_Basic_SW_ver();
-call Read_Boot_SW_ver();
-call into_1060();
-call into_2701();
-call into_2702();
-call Write_PCBA_SN();
-call Read_PCBA_SN();
-call write_factory_mode_Start();
-call Eeprom_write();
-call Eeprom_read();
-call EMMC_write();
-call EMMC_read();
+  SetTestName("Get and Set Product Parameter");
+  call into_1001();
+  call into_1003();
+  call Read_Basic_SW_ver();
+  call Read_Boot_SW_ver();
+  call into_1060();
+  call into_2701();
+  call into_2702();
+  call Write_PCBA_SN();
+  call Read_PCBA_SN();
+  call write_factory_mode_Start();
+  //~ call Eeprom_write();
+  //~ call Eeprom_read();
+  //~ call EMMC_write();
+  //~ call EMMC_read();
+  
+  call Read_Digital_IO_By_PIN();
+    //~ OperatorPrompt($DI_PIN, "OK");
+  End;
+  
+  
+  call Read_Analog_INPUT_By_PIN();
 
-call Read_Digital_IO_By_PIN();
-call Read_Analog_INPUT_By_PIN();
 //~ call Read_PWM_IN_By_PIN();
 //~ call Set_Digital_OutPut();
-End;
+
 
 //~ call Set_Digital_OutPut();
 //~ call Read_PWM_INPUT();
@@ -81,13 +86,12 @@ End;
 //call Set_Digital_OutPut_DO_HS_Backlight();
 //call MCU_EOL_HeartBeat();
 //call Read_PWM_INPUT();
-End;
 
 function Initialize()
 {
   UpdateStatus("~~~~~~~~~~~~~ InitializeParameters ~~~~~~~~~~");
   //~ OperatorPrompt("cell 1", "OK");
-  $g_Testdebug=true;
+ $g_Testdebug=true;  ///Global debugging flag
   $g_System_Config_File="D:\\22684_H93_LDCU_EOL_TESTER\\ConfigFiles\\HW_Config.ini";
   $g_ConfigPath = "D:\\22684_H93_LDCU_EOL_TESTER\\ConfigFiles\\";
   call Init_DAQ6509();
@@ -96,13 +100,15 @@ function Initialize()
   call Init_IT6722();
   call Init_DM6510();
   
-  //~ call Init_ZLG_USBCANFD();
-  //~ call ZLG_CANFD_Rev();  // 清空beffer
-  //~ call Read_ZLG_USBCANFD_Info();
+  call Init_ZLG_USBCANFD();
+  call ZLG_CANFD_Rev();  // 清空beffer
+  call Read_ZLG_USBCANFD_Info();
   
-  //~ call LoadBoxOpen();
+  call LoadBoxOpen();
   //~ call CanHubOpen();
-  //~ call RIGOL_DG5072_Initialize();
+  
+  call RIGOL_DG5072_Initialize();
+  //~ OperatorPrompt("cell 1", "OK");
   call Fixtures_Power_Controler_Open();
   call Fixtures_PowerOn();
   call Cylinder_Initialize();
@@ -111,14 +117,14 @@ function Initialize()
 
 function GlobalCleanup()
 {
-  //~ call Close_ZLG_USBCANFD();  
-  //~ call LoadBoxClose();
+  call Close_ZLG_USBCANFD();  
+  call LoadBoxClose();
   call  Fixtures_Power_Controler_Close();
   call Close_IT6722();
   call Close_DM6510();
-  //~ RIGOL_DG5072_Close();
+  call RIGOL_DG5072_Close();
   call Cylinder_Initialize();
-  return;
+  End;
 }
 
 
@@ -132,16 +138,32 @@ function OnFail()
   call PostUUT();
   return;
 }
-function PostUUT()//Post_UUT
+function PostUUT()
 {
+  ///Release the fixture and the product will be disconnected from the power supply at PostUUT finish
+  SetTestName("PostUUT");
+  call DUTPowerOff();
   call Cylinder_Initialize();//测试完成打开夹具
+  
+    //~ if( $g_Testdebug)
+  //~ {
+     //~ OperatorPrompt("PostUUT", "OK");
+  //~ }
   End;
 }
 function PreUUT()
 {
+  // Fixture control, product power-on and other initial actions will be completed in PreUUT//
+  SetTestName("PreUUT");
+  call LoadBoxResetSW(); // 所有负载继电器复位
   call Fix_Start();
   call PowerOn_IT6722();
   call DUTPowerOn();
+  if( $g_Testdebug)
+  {
+     OperatorPrompt("PreUUT", "OK");
+  }
+   
   return;
 }
 function AutomationLoop()
@@ -822,6 +844,44 @@ function LoadBoxClose()
   SerialClose($g_LoadBox_Handle);
   return;
 }
+function LoadBoxResetSW()
+{
+    //Board 1 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"4MSET0000000000000000$","OK",500);
+  $result="Board 1 Reset"+$result;
+  UpdateStatus($result);
+     //Board 2 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"5MSET0000000000000000$","OK",500);
+   $result="Board 2 Reset"+$result;
+  UpdateStatus($result);  
+     //Board 3 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
+  $result="Board 3 Reset"+$result;
+  UpdateStatus($result);
+     //Board 4 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"7MSET0000000000000000$","OK",500);
+$result="Board 4 Reset"+$result; 
+  UpdateStatus($result); 
+     //Board 5 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"8MSET0000000000000000$","OK",500);
+  $result="Board 5 Reset"+$result;
+  UpdateStatus($result);
+     //Board 6 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"9MSET0000000000000000$","OK",500);
+$result="Board 6 Reset"+$result; 
+ UpdateStatus($result); 
+     //Board 7 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"AMSET0000000000000000$","OK",500);
+  $result="Board 7 Reset"+$result;
+  UpdateStatus($result);
+   //Board 8 Reset
+  $result = SerialSendMilliseconds($g_LoadBox_Handle,"BMSET0000000000000000$","OK",500);
+  $result="Board 8 Reset"+$result;
+  UpdateStatus($result); 
+
+  return;
+}
+
 
 function Fixtures_Power_Controler_Open()
 {

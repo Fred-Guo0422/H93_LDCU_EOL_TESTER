@@ -1,0 +1,5966 @@
+//~ /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//File Name:			XPeng_F30 CDCU FVT RevA.jts
+//Customer: 			XPeng
+//Project:   			
+//Creator:   			Fred Guo
+//Software Revision:	RevA
+//Jabiltest Version:           	7.53
+//Released:			2023/02/19
+//Description:		XPeng_F30 CDCU FVT Tester
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//Revision History:	
+//RevA		by Kim Lee		2023/02/19
+//First Release	
+    
+    
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#include<"D:\\21270_XPeng_F30_CDCU_PCBA_FCT\\Scripts\\SubScripts\\Sub_ZLG_CAN.jts">
+#include<"D:\\21270_XPeng_F30_CDCU_PCBA_FCT\\Scripts\\SubScripts\\FIxtureControl.jts">
+#include<"D:\\21270_XPeng_F30_CDCU_PCBA_FCT\\Scripts\\SubScripts\\CDCU_MUC_AI_VOL.jts">
+SetFinalizeFunction("CleanUp_Test");
+SetFailFunction("OnFail");
+SetAbortFunction("OnAbort");
+
+call PreUUT();
+OperatorCountDownTimer("<<<<<<<<<<<Wait MCU Power On!!>>>>>>>>>>>>",120,true);//大概需要30s 
+call MeasureVoltage_All();   			//所有基础电压测试 (依赖Vol_Test_Limit.ini配置文件)
+call WorkMode_Curren();
+call MCU_EOLTestModel_Enter();	 	//MCU进入EOL测试模式
+SleepMilliseconds(2000);
+call CDCU_AI_Vol_all_Check();			// EOL 模式下才能测量
+$g_HeartBeat_Enable=true;
+call CDCU_PCBA_SN_Write();
+call CDCU_PCBA_SN_Read();
+call CDCU_PN_Write();  
+call CDCU_PN_Read();
+call CDCU_EQID_Write(); 
+call CDCU_EQID_Read();
+//----------------------以上MCU 烧录部分功能---------------
+call DUTPowerOff();
+SleepMilliseconds(2000);
+call DUTPowerOn();
+OperatorCountDownTimer("<<<<<<<<<<<Wait Android Power On!!>>>>>>>>>>>>",120,true);//大概需要30s 
+call MCU_EOLTestModel_Enter();	
+call MCU_EOL_HeartBeat(); 
+$g_HeartBeat_Enable=false;   //使能自动发送心跳
+call Android_EOLTestModel_Enter();
+$g_HeartBeat_Enable=true;
+SleepMilliseconds(1000);
+
+
+//~ call MCU_EOL_HeartBeat(); 
+// ~~~~~~~~~~~以下步骤需要进入Android_EOLTestModel~~~~~~~~~~~~~~~~~~
+//~ call CDCU_AI_Vol_all_Check(); //AI Vol from CAN read
+call CDCU_AllHWSW_Version_Check(); //检查版本
+
+call CDCU_ECU_WorkMode_1A_Write(); //写工作模式
+
+call CDCU_CDUID_Read();
+call CDCU_UFS_CHIP_Read();
+call CDCU_Speaker_Check();
+
+//~ call CDCU_A2B_MIC_Check();
+call CDCU_TEMP_Check();
+call IVI_DISPLAY_EN_WorkMode_Check();
+call ICM_DISPLAY_EN_WorkMode_Check();
+call CAN_Test();
+//~ call DUTPowerOff();
+//~ SleepMilliseconds(2000);
+//~ call DUTPowerOn();
+//~ OperatorCountDownTimer("<<<<<<<<<<<Wait Android Power On!!>>>>>>>>>>>>",60,true);//大概需要30s 
+//~ call MCU_EOLTestModel_Enter();
+//~ call CDCU_AI_Vol_all_Check();
+$g_HeartBeat_Enable=false;
+call SleepMode_Curren();
+call IVI_DISPLAY_EN_SleepMode_Check();
+call ICM_DISPLAY_EN_SleepMode_Check();
+End;
+
+function PreUUT()
+{
+  call DUTPowerOff();
+  call Fix_Start();
+  call DUTPowerOn();
+  call VerifySerialNumber();
+  //~ call Sub_SetFixUp();
+  $g_HeartBeat_Enable=false;
+  return;
+}
+function AutomationLoop()
+{
+  if($g_HeartBeat_Enable==true)
+  {
+    call ZLG_USBCANFD_AutoCAN_Enable(); //使能自动发送心跳
+  }
+  if($g_HeartBeat_Enable)
+  {
+    call ZLG_USBCANFD_AutoCAN_Disable(); //停止自动发送心跳
+  }
+  End;
+}
+
+function Initialize()
+{
+  UpdateStatus("~~~~~~~~~~~~~ Global_Initialize~~~~~~~~~~~~~~~~");
+  $g_HeartBeat_Enable=false;
+  $g_ConfigPath = "D:\\21270_XPeng_F30_CDCU_PCBA_FCT\\Scripts\\";
+  $g_SysteM_Config_File = StringCat($g_ConfigPath,"PCBA_FCT.ini");
+  $g_ScannerComPort= ReadIniFile($g_SysteM_Config_File,"HW_Config", "ScannerComPort"); 
+  
+  //~~~~~~~~~~~~~~~~ INT DIO~~~~~~~~~~~~~~~~~~~~~~~~~~
+  call DIO_Config();
+  //~~~~~~~~~~~~~~~~ INT DAQ6510 ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  $DAQ6510_Port = ReadIniFile($g_SysteM_Config_File,"HW_Config","DAQ6510_1_Port");
+  call InitDM6510();
+  $DAQ6510_1_Handle = CopyVariable($g_DAQ6510_Handle);
+  $DAQ6510_Port = ReadIniFile($g_SysteM_Config_File,"HW_Config","DAQ6510_2_Port");
+  //~ OperatorPrompt($DAQ6510_Port, "OK");
+  call InitDM6510();
+  $DAQ6510_2_Handle = CopyVariable($g_DAQ6510_Handle);
+  
+  //~~~~~~~~~~~~~~~~ INT FIX CONTROLLER ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  //~ $g_ConfigPath = "D:\\21270_XPeng_F30_CDCU_PCBA_FCT\\Scripts\\";
+  call LoadingFixConfig();
+  call Load_Left_ConnecterConfig();
+  call Sub_Left_Connecter_out(); //连接器拔出
+  call Cylinder_Initialize();	//夹具初始化
+
+  //~~~~~~~~~~~~~~~~ INT Power ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  call InitIT6722();
+  call InitIT6322B();
+  //~~~~~~~~~~~~~~~~ INT DAQ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  call FT8206A_Initialize();
+  //~~~~~~~~~~~~~~~~ INT CAN ~~~~~~~~~~~~~~~~~~~~~~~~~~
+  call Init_ZLG_USBCANFD();
+  call Add_ZLG_USBCANFD_AutoCAN(); //HeartBeat
+  
+  
+  	//>>>>>>>>>>>>>>>>写入 F30 CDCU 物料号信息 PartNumber<<<<<<<<<<<<<<<<<
+    //~ 2E F1 87 <PN ASCII>
+    //~ // 39 31 31 30 33 30 30 46 41 31 30 30 52 32  ---9110300FA100R2 (带 XPU)物料号
+    //~ // 39 31 31 30 33 30 30 46 41 32 30 30 52 32   --9110300FA200R2 (Not带 XPU)物料号
+    //~ // 39 31 31 30 33 30 30 46 41 32 30 30 52 32    9110300FA200R3  Not带 XPU)物料号
+    //~ SetTestName=("CDCU_PN_Write");
+    $g_ModelType = OperatorInputListPrompt(">>>>>>>>>>>Please select test mode>>>>>>>>>>>","9110300FA50001;9110300FA100R2;9110300FA200R2;9110300FA200R3",600,500);
+    if($g_ModelType=="9110300FA100R2") 
+    {
+	$PN_Hex_Code="39 31 31 30 33 30 30 46 41 31 30 30 52 32";
+    }
+    if($g_ModelType=="9110300FA200R2") 
+    {
+	$PN_Hex_Code="39 31 31 30 33 30 30 46 41 32 30 30 52 32";
+    }
+    if($g_ModelType=="9110300FA200R3") 
+    {
+	$PN_Hex_Code="39 31 31 30 33 30 30 46 41 32 30 30 52 32";
+    }
+    if($g_ModelType=="9110300FA50001") 
+    {
+	$PN_Hex_Code="39 31 31 30 33 30 30 46 41 35 30 30 30 31 ";
+    }
+    if($g_ModelType=="") 
+    {
+	Fail("请选中一个Mode 再开始测试！");
+    }
+  
+  
+  
+   UpdateStatus("~~~~~~~~~~~~~ Global_Initialize End~~~~~~~~~~~~~~~~");
+  End;
+}
+function DIO_Config()
+{
+  //~ OperatorPrompt("DIO_Config", "OK");
+  UpdateStatus("~~~~~~~~~~~~~ DIO_Config Start~~~~~~~~~~~~~~~~");
+  //~ //~~~~~~~~~~~~~~~~~DUT Power On SW//~~~~~~~~~~~~~~~~~
+  // Port0
+  $Power_On_Port = "port0";
+  $Power_CDCU_BAT_Line1 = "line0";
+   $Power_CDCU_BAT_Line2 = "line1";
+   $Amplifier_Power_line="line2";
+  $Power_IGON_Line = "line3";
+  $BCAN_Line = "line4";
+  $LPCAN_Line = "line5";
+  $CCAN_Line = "line6";
+  $TPCAN_Line = "line7";
+  // Port1
+  $SW_Port1 = "port1";
+  $ECAN_Line = "line0";
+  $ICAN_Line = "line1";
+  $LIN1_Line = "line2";
+  $LIN2_Line = "line3";
+  $LIN3_Line = "line4";
+  $LIN4_Line = "line5";
+  $LIN5_Line = "line6";
+  $Power_DOIP_Line = "line7";
+
+  //Port 6
+  $Power_SW2_Port = "port6";
+  $Power_DMM_Line = "line0";
+  
+  $DIO96_1 = New("String","Dev1");
+  $TaskName = "TaskName";
+  $DeviceName = $DIO96_1;
+  NI_DAQmx_Initialize();
+  NI_DAQmx_ResetDevice($DeviceName);
+  
+  NI_DAQmx_WriteDIOPort($DeviceName,"port0","00",$TaskName);
+  
+  NI_DAQmx_WriteDIOPort($DeviceName,"port1","00",$TaskName);
+  UpdateStatus("~~~~~~~~~~~~~ DIO_Config End~~~~~~~~~~~~~~~~");
+  return;
+}
+//~~~~~~~~~~~~~~~~~~~~~~~~~Global Start~~~~~~~~~~~~~~~~~~~~~~~~~
+function GlobalCleanup()
+{
+  //~ call Sub_Left_Connecter_out(); //连接器拔出
+  //~ call Cylinder_Initialize();	//夹具初始化
+
+  //~ IviVISA_Write($IT6722_handle, "OUTP OFF\n");
+  //~ IviVISA_Close($IT6722_handle);
+  //~ OperatorPrompt("GlobalCleanup", "OK");
+  call Cylinder_Initialize();
+  
+  // Close DAQ 6510
+  $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+  call CloseDM6510();
+  $g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+  call CloseDM6510();
+  IviVISA_Close($IT6722_handle);
+  IviVISA_Close($IT6322B_handle);
+  // Close CAN 1
+  USBCANFD_ResetCAN($g_ZLG_USBCAN_Channel_Handle)		//重置 CH1
+  USBCANFD_ResetCAN($g_ZLG_USBCAN_Channel_Handle2)		//重置 CH2
+  USBCANFD_CloseDevice($g_ZLG_USBCAN_Device_Handle);	//关闭 CAN1
+  
+  FT_DAQ_SilverX_ResetDevice($FT_DAQ_IDs);
+  End;
+}
+
+function CleanUp_Test()
+{
+  UpdateStatus("~~~~~~~~~~~~~ CleanUp_Test Start~~~~~~~~~~~~~~~~");
+  SetTestName("CleanUp_Test");
+  //~ OperatorPrompt("CleanUp_Test", "OK");
+  call DUTPowerOff();
+  call Sub_Left_Connecter_out(); //连接器拔出
+  call Cylinder_Initialize();		//夹具初始化 
+  call  ZLG_USBCANFD_AutoCAN_Disable();
+  UpdateStatus("~~~~~~~~~~~~~ CleanUp_Test End~~~~~~~~~~~~~~~~");
+  End;
+}
+function OnFail()
+{
+  UpdateStatus("~~~~~~~~~~~~~ OnFail Start~~~~~~~~~~~~~~~~");
+  UpdateStatus("~~~~~~~~~~~~~ OnFail End~~~~~~~~~~~~~~~~");
+  End;
+}
+function OnAbort()
+{
+  UpdateStatus("~~~~~~~~~~~~~ OnAbort Start~~~~~~~~~~~~~~~~");
+  UpdateStatus("~~~~~~~~~~~~~ OnAbort End~~~~~~~~~~~~~~~~");
+  End;
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~Global End~~~~~~~~~~~~~~~~~~~~~~~~~
+//扫描并检查条码
+function VerifySerialNumber()
+{
+  UpdateStatus("~~~~~~~~~~~~~ VerifySerialNumber Start ~~~~~~~~~~");
+  $TestName = New("String","VerifySerialNumber");
+  SetTestName($TestName);
+  $Scan_Handle = SerialOpen($g_ScannerComPort,115200,8,"N",1);
+  $SerialNumber = SerialSendMilliseconds($Scan_Handle,"T","",500);
+  $result = StringTrim($SerialNumber);
+  UpdateStatus($SerialNumber);
+  SerialClose($Scan_Handle);
+  $TestResult = true;
+  $SerialNumber = StringTrim($SerialNumber);
+  RecordMeasurementPassFail("VerifySerialNumber", $result, "", true, $TestResult); 
+  UpdateStatus("~~~~~~~~~~~~~ VerifySerialNumber End ~~~~~~~~~~");
+  SetSerialNumberField($SerialNumber);
+  return;
+}
+//工作电流检查<电源采集>
+function WorkMode_Curren()
+{
+  UpdateStatus("~~~~~~~~~~~~~ WorkMode_Curren Start ~~~~~~~~~~");
+  IviVISA_Write($IT6722_handle, "MEASure:CURRent?\n");
+  SleepMilliseconds(100);
+  $Response =  IviVISA_Read($IT6722_handle);
+  UpdateStatus($Response);  
+  $measureName="WorkMode_Curren";
+  RecordMeasurementWithLimits($measureName, $Response, "A", true, 1.2, 1.8, true);
+   UpdateStatus("~~~~~~~~~~~~~ WorkMode_Curren End ~~~~~~~~~~");
+  return;
+}
+function SleepMode_Curren()
+{
+  UpdateStatus("~~~~~~~~~~~~~Sleep_Curren Start ~~~~~~~~~~");
+  SetTestName("Sleep Mode");
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_IGON_Line,0, $TaskName);
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName, $SW_Port1, $Power_DOIP_Line, 0, $TaskName);
+  call ZLG_USBCANFD_AutoCAN_Disable(); // 
+  OperatorCountDownTimer("<<<<<<<<<<<Wait UUT Sleep Mode>>>>>>>>>>>>",120,true);//大概需要30s 
+  //~ OperatorInputPrompt("Wait UUT Sleep Mode");
+
+  IviVISA_Write($IT6722_handle, "MEASure:CURRent?\n");
+  SleepMilliseconds(100);
+  $Response =  IviVISA_Read($IT6722_handle);
+  UpdateStatus($Response);  
+  $measureName="Sleep Curren";
+  $Response = $Response;
+  RecordMeasurementWithLimits($measureName, $Response, "A", true, 0, 0.022, true);
+   UpdateStatus("~~~~~~~~~~~~~Sleep_Curren End ~~~~~~~~~~");
+  return;
+}
+function DUTPowerOn()
+{
+      UpdateStatus("~~~~~~~~~~~~~ UUT_Power_ON ~~~~~~~~~~");
+      $TestName = New("String","Power_ON");
+      SetTestName($TestName);
+      // DIO96 board 1 K0,K1 and Dio96 board K0 Close 
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_CDCU_BAT_Line1, 1, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_CDCU_BAT_Line2,1, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_SW2_Port, $Power_DMM_Line, 1, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_IGON_Line,1, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $SW_Port1, $Power_DOIP_Line, 1, $TaskName);
+      //~ NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Power_On_Port,$Amplifier_Power_line,1,$TaskName);
+      UpdateStatus("~~~~~~~~~~~~~ UUT_Power_ON ENd~~~~~~~~~~");
+  return;
+}
+
+function DUTPowerOff()
+{
+      UpdateStatus("~~~~~~~~~~~~~ UUT_Power_off Start~~~~~~~~~~");
+      $TestName = New("String","Power_OFF");
+      SetTestName($TestName);
+      // DIO96 board 1 K0,K1 and Dio96 board K0 Close 
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_CDCU_BAT_Line1,0, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_CDCU_BAT_Line2,0, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_SW2_Port, $Power_DMM_Line, 0, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_IGON_Line,0, $TaskName);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName, $SW_Port1, $Power_DOIP_Line, 0, $TaskName); 
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Power_On_Port,$Amplifier_Power_line,0,$TaskName);
+      //~ SleepMilliseconds(300);
+      UpdateStatus("~~~~~~~~~~~~~ UUT_Power_off End~~~~~~~~~~");
+      return;
+}
+
+
+function MeasureVoltage_All()
+{
+  UpdateStatus("~~~~~~~~~~~~~ MeasureVoltage_All Start~~~~~~~~~~");
+  $TestName = New("String","5.6  Measure Voltage");
+  SetTestName($TestName);
+  SleepMilliseconds(10);
+  $Vol_Test_Limit_config=StringCat($g_ConfigPath,"Vol_Test_Limit.ini");
+  $g_Vol_InI_SectionNames = IniFile_ReadAllSectionNames($Vol_Test_Limit_config);
+  $Length = ArrayGetLength($g_Vol_InI_SectionNames);
+
+  //~ OperatorPrompt($g_Vol_InI_SectionNames, "OK");    
+  //~ OperatorPrompt($Length, "OK");
+  $MeasureVoltage_LOOP=0;
+  while($MeasureVoltage_LOOP<$Length)
+  {
+    SleepMilliseconds(200); //每一个通道测试之间延时200ms
+    $measureName=Array1DGetValue($g_Vol_InI_SectionNames,$MeasureVoltage_LOOP);
+    $lowerLimit= ReadIniFile($Vol_Test_Limit_config,$measureName, "lowerLimit");
+    $upperLimit= ReadIniFile($Vol_Test_Limit_config,$measureName, "upperLimit");
+    $Rang= ReadIniFile($Vol_Test_Limit_config,$measureName, "Rang");
+    $Channel= ReadIniFile($Vol_Test_Limit_config,$measureName, "Channle");
+    $DMM= ReadIniFile($Vol_Test_Limit_config,$measureName, "DMM");
+    // 检查使用那一台设备测试
+    $Temp = "MeasurePin="+$measureName;
+    //~ OperatorPrompt($measureName, "OK"); // 段名字 ——这里打开将可以debug 每个步骤的测试电压
+    
+    //~ $VolDebugStep="??"
+    //~ if($measureName==)
+    //~ {
+	 //~ OperatorPrompt($measureName, "OK"); // 段名字 ——这里打开将可以debug 每个步骤的测试电压
+    //~ }
+    if($DMM==1)
+    {
+      
+      //~ $DAQ6510_Handle = $DAQ6510_1_Handle;
+       $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+    }
+    if($DMM==2)
+    {
+	$g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+    }
+    
+    call  Keysight6510_MeasureVoltage();
+    RecordMeasurementWithLimits($measureName,$DMMRead_Vol,"V",true,$lowerLimit,$upperLimit,true);
+    //~ OperatorPrompt($measureName, "OK");
+    $MeasureVoltage_LOOP=$MeasureVoltage_LOOP+1;
+  }
+  UpdateStatus("~~~~~~~~~~~~~ MeasureVoltage_All End~~~~~~~~~~");
+  return;
+}
+
+function Sleep_Curren_for_6510()
+{
+  //关闭点火
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_On_Port, $Power_IGON_Line,0, $TaskName);
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName, $SW_Port1, $Power_DOIP_Line, 0, $TaskName);
+  // set DMM Curren Mode (CH41)  接通电流表通道
+  $measureName="Sleep_Curren";
+  $lowerLimit=0.001;
+  $upperLimit= 0.1;
+  $Rang= "0.001000";
+  $Channel= "141";
+  $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+  //Selects the active measure function.
+  $Set_Current_Meas = ":SENS:FUNC 'CURRent' ,(@"+$Channel+");:SENS:CURRent:RANG:AUTO OFF ,(@"+$Channel+");:SENS:CURRent:RANG "+$Rang+" ,(@"+$Channel+")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Set_Current_Meas); 
+  //Sets the number of digits that are displayed for measurements on the front panel.
+  IviVISA_Write($g_DAQ6510_Handle,":DISPlay:CURR:DC:DIGits 6");  
+  OperatorPrompt("Sleep Test ", "OK");
+  //~ Close the listed channels without affecting any other channels.
+  //~ :ROUT:MULT:CLOS (@104)
+  $Close_Channel =":ROUT:MULT:CLOS (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Close_Channel);
+OperatorPrompt("Sleep Test ", "OK");
+  //切换到只用电流表通道，关闭SW Board CH0
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName, $Power_SW2_Port, $Power_DMM_Line, 0, $TaskName);
+    OperatorPrompt("Sleep Test ", "OK");
+  $Meas_flag = false;
+  $Meas_loop = 0;
+  $g_DAQ6510_Read = ":READ?\r\n";
+  while(!$Meas_flag && $Meas_loop < 5)
+  {
+    IviVISA_Write($g_DAQ6510_Handle,":READ?\r\n"); 
+    $DMMRead_Curr = IviVISA_Read($g_DAQ6510_Handle);
+    //~ $DMMRead_Curr = Round($DMMRead_Curr,3);
+    UpdateStatus($DMMRead_Curr);
+    $Meas_flag =  ($DMMRead_Curr >= $lowerLimit) && ($DMMRead_Curr <= $upperLimit);
+  if(!$Meas_flag)
+  {
+      SleepMilliseconds(200);
+  }
+  $Meas_loop = $Meas_loop + 1;
+  }
+  OperatorPrompt("Sleep Test ", "OK");
+}
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>TEST FUNCTIONS begin <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+function MCU_EOL_HeartBeat()
+{
+  //上位机需要以2S为周期,向待测产品发02 3E 80 心跳报文来维持MCU EOL状态.
+    UpdateStatus("====== MCU_EOL_HeartBeat start=========");
+    $canID = "0x721";
+
+  //1返回报文02 50 03
+    $CAN_Send_Msg = "02 3E 80 00 00 00 00 00";
+    $CAN_Rev_ExpMsg = "50 03";
+    $MeasurementName = "MCU_EOL_HeartBeat";
+    call ZLG_CAN_Send();//send CAN msg
+    //~ SleepMilliseconds(200);
+    //~ call ZLG_CAN_Rev();
+    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    //~ UpdateStatus("====== MCU_EOL_HeartBeat End=========");
+    //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  UpdateStatus("~~~~~~~~~~~~~ MCU_EOL_HeartBeat End~~~~~~~~~~");
+  
+    return;  
+}
+  
+function Android_EOLTestModel_Enter()
+{
+    UpdateStatus("~~~~~~~~~~~~~ Android_EOLTestModel_Enter Start~~~~~~~~~~");
+    SleepMilliseconds(250);
+    // ##########安卓进入 EOL 测试模式###########
+    //安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+    $canID = "0x721";
+    $TestName = New("String","5.8_Into_Android_EOLTestModel");
+    SetTestName($TestName);
+    //31 01 startRoutine
+    $canID = "0x721";
+    $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+	$MeasurementName = "Android_EOLTestModel_Enter";
+	$CAN_Send_Msg = "10 3E 31 01 C0 00 00 00";
+	$CAN_Rev_ExpMsg = "71 01 C0 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(30);
+	call ZLG_CAN_Rev();
+      	//~ $show_CAN_Rev_Msg = "第一帧发送结果="+$CAN_Rev_Msg;
+	//~ UpdateStatus( $show_CAN_Rev_Msg );
+	//===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+	$CAN_Send_Msg = "21 00 00 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	$CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	$CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20)；
+	$CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	$CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	$CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	$CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	$CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+	call ZLG_CAN_Send();//send CAN msg
+	
+	SleepMilliseconds(1000);//间隔时间建议1000ms
+       //~ OperatorPrompt("Android_EOLTestModel_Enter", "OK");
+	call ZLG_CAN_Rev();//receive CAN msg
+	$Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+	$show_CAN_Rev_Msg = "多帧发送结果="+$CAN_Rev_Msg;
+	UpdateStatus( $show_CAN_Rev_Msg );
+    }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    SleepMilliseconds(1000);
+  //==================================请求结果=====================
+  //requestRoutineResult
+    $Write_Loop =0;
+    $Result =false;
+    while($Write_Loop<5 && !$Result)
+    {
+	$CAN_Send_Msg = "04 31 03 C0 00 00 00 00";
+	$CAN_Rev_ExpMsg = "71 03 C0 00 04 00 00";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+	$MeasurementName = $MeasurementName+"->Request";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);//这个时间很重要
+	$CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(500);
+	call ZLG_CAN_Rev(); //receive CAN msg
+	$Result = StringContains($CAN_Rev_Msg,"ID:07A1");
+	$Write_Loop=$Write_Loop+1;
+    }
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 3);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    UpdateStatus("~~~~~~~~~~~~~ Android_EOLTestModel_Enter End~~~~~~~~~~");
+    return;
+}
+
+function CDCU_eMMC_Format()
+{
+  UpdateStatus("~~~~~~~~~~~~~ CDCU_eMMC_Format Start~~~~~~~~~~");
+  $TestName = New("String","CDCU_eMMC_Format");
+  SetTestName($TestName);
+   
+  //所有测试前,一定要进入EOL测试模式.
+    //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>对 eMMC 芯片(U43)进行格式化操作<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    $canID = "0x721";
+
+  //eMMC 格式化在 10 03 后执行，需进入安全模式(27 01 / 27 02 xx xx xx xx)
+  //返回报文
+  //7F 31 78
+  //71 01 C0 94 00
+    $CAN_Send_Msg = "05 31 01 C0 94 00 AA AA";
+    $CAN_Rev_ExpMsg = "71 01 C0 94 00";
+    $MeasurementName = "CDCU_eMMC_Format";
+    call ZLG_CAN_Send();//send CAN msg
+  
+    SleepMilliseconds(20)
+    call ZLG_CAN_Rev();
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+    $MeasurementName = "CDCU_eMMC_Format";
+  
+    $StartRoutine3101 = "10 3E 31 01 C0 02 00 00";
+    $MCURes7101 = "71 01 C0 02";	
+    $RequestRoutineResult3103 = "04 31 03 C0 02 00 00 00";
+    $ANDRes7103 =  "71 03 C0 02 04 00 00";	//sample: 71 03 C0 02 04 00 01
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    call Send103E3101_RecSingle7103();
+    UpdateStatus("~~~~~~~~~~~~~ CDCU_eMMC_Format Start~~~~~~~~~~");
+  return;
+  }
+  
+function MCU_EOLTestModel_Enter()
+{
+    SleepMilliseconds(250);  
+    UpdateStatus("~~~~~~~~~~~~~ MCU_EOLTestModel_Enter Start ~~~~~~~~~~");
+    $canID = "0x721";
+    $TestName = New("String","MCU_EOLTestModel_Enter");
+    SetTestName($TestName);
+    //所有测试前,一定要进入EOL测试模式.
+    //1返回报文02 50 03
+    $CAN_Send_Msg = "02 10 03 AA AA AA AA AA";
+    $CAN_Rev_ExpMsg = "50 03";
+    $MeasurementName = "MCU_EOLDiagnoseModel_Enter";
+
+    $Send_loop=0;
+    $Result=false;
+    while($Send_loop<5 &&  !$Result )
+    {
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(200);
+      call ZLG_CAN_Rev();
+      UpdateStatus( $CAN_Rev_Msg);
+      $Result = StringContains($CAN_Rev_Msg,"50 03");
+      $Send_loop=$Send_loop+1;
+      UpdateStatus($g_ZLG_USBCAN_Channel_Handle);
+    }
+    
+    $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:", ";");
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    
+    //2返回报文02 50 60
+    $CAN_Send_Msg = "02 10 60 00 00 00 00 00";
+    $CAN_Rev_ExpMsg = "50 60";
+    $MeasurementName = "MCU_EOLModel_Enter";
+    $Send_loop=0;
+    $Result=false;
+    while($Send_loop<5 &&  !$Result )
+    {
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(50);
+      call ZLG_CAN_Rev();
+      $Result = StringContains($CAN_Rev_Msg,"50 03");
+      $Send_loop=$Send_loop+1;
+    }
+    //~ UpdateStatus( $CAN_Rev_Msg);
+    $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:", ";");
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    
+    //返回报文06 67 01 XX XX XX XX~~~~~~~ MCU_EOLSafetyModel_Enter
+    $CAN_Send_Msg = "02 27 01 00 00 00 00 00";
+    $CAN_Rev_ExpMsg = "67 01";
+    $MeasurementName = "MCU_EOLSafetyModel_Enter";
+    $Send_loop=0;
+    $Result=false;
+    while($Send_loop<5 &&  !$Result )
+    {
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(50);
+      call ZLG_CAN_Rev();
+      $Result = StringContains($CAN_Rev_Msg,"67 01");
+      $Send_loop=$Send_loop+1;
+    }
+    $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:", ";");
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    
+    
+    //~~~~~~~~~~~返回报文02 67 02 MCU_EOLSafeKey_Input
+    $CAN_Send_Msg = "06 27 02 01 02 03 04 00";
+    $CAN_Rev_ExpMsg = "67 02";
+    $MeasurementName = "MCU_EOLSafeKey_Input";
+    $Send_loop=0;
+    $Result=false;
+    while($Send_loop<5 &&  !$Result )
+    {
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(50);
+      call ZLG_CAN_Rev();
+      $Result = StringContains($CAN_Rev_Msg,"67 02");
+      $Send_loop=$Send_loop+1;
+    }
+    $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:", ";");
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    UpdateStatus("~~~~~~~~~~~~~ MCU_EOLTestModel_Enter End ~~~~~~~~~~");
+    return;
+  }
+  
+  
+
+
+  
+  
+
+  
+function CDCU_PCBA_SN_Write()
+{
+  UpdateStatus("~~~~~~~~~~~~~ CDCU_PCBA_SN_Write ~~~~~~~~~~");
+  $TestName = New("String","CDCU_PCBA_SN_Write");
+  SetTestName($TestName); 
+  //所有测试前,一定要进入EOL测试模式.
+    //>>>>>>>>>>>>>>>>>>>>>>>>写入产品 PCBA 序列号<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    //a、F30 CDCU 测试使用 DCAN 通道，为普通 CAN 协议 
+    //b、PCBA 序列号长度必须为 16 位，序列号格式需满足小鹏 PCBA 序列号定义规则 
+    //c、扫描枪可准确读取二维码信息 
+    //d、扫描枪需安装在夹具内，开始测试时自动读取 
+    //e、序列号写入执行需在 MCU 完成烧录后执行
+
+    //第 1~5 位为预留位，由代工厂自行定义，用于产品信息识别。
+    //第 6~8 位为 Data code，分别表示年、月、日，各占一位。
+    //第 9~12 位为生产序列号，由 4 位 10 进制数表示，不同日期生产的产 品从 0001 开始累加。
+    //第 13~16 位为预留位，由代工厂自行定义信息。
+    //PCBA序列号从扫描枪获取
+    //Demo
+    //B004H6BM0024JV06
+    //42 30 30 34 48 36 42 4D 30 30 32 34 4A 56 30 36 
+    $canID = "0x721";  
+    $PCB_SN_HEX = StringToHexString($SerialNumber);
+    //~ $PCB_SN_HEX = StringToHexString("B004H6BM0024JV05");
+    UpdateStatus($SerialNumber);
+    UpdateStatus($PCB_SN_HEX);
+    $Write_Loop =0;
+    $Result =false;
+     while($Write_Loop<5 && !$Result)
+     {
+	$CAN_Send_Msg_10 = StringSub($PCB_SN_HEX,0,8);
+	$CAN_Send_Msg_10 = "10 13 2E F1 8C "+ $CAN_Send_Msg_10;
+	UpdateStatus($CAN_Send_Msg_10);
+
+	$CAN_Send_Msg_21 = StringSub($PCB_SN_HEX,9,21);
+	$CAN_Send_Msg_21 = StringTrim($CAN_Send_Msg_21);
+	$CAN_Send_Msg_21 = "21 "+ $CAN_Send_Msg_21;
+	UpdateStatus($CAN_Send_Msg_21);
+
+
+	$CAN_Send_Msg_22 = StringSub($PCB_SN_HEX,29,39);
+	$CAN_Send_Msg_22 = StringTrim($CAN_Send_Msg_22);
+	$CAN_Send_Msg_22 = "22 "+ $CAN_Send_Msg_22+" AA";
+	UpdateStatus($CAN_Send_Msg_22);
+
+	$CAN_Send_Msg =CopyVariable($CAN_Send_Msg_10);
+	//~ UpdateStatus("Start Write SN");
+	UpdateStatus( $CAN_Send_Msg);
+	$CAN_Rev_ExpMsg = "30 00 14";
+	$MeasurementName = "PCBA_SN_Write>Request";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(50);
+	call ZLG_CAN_Rev();
+	$TempStr=$MeasurementName +"="+$CAN_Rev_Msg;
+	UpdateStatus( $TempStr);
+	//~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+	//~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+	
+	$CAN_Send_Msg = CopyVariable($CAN_Send_Msg_21);
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	$CAN_Send_Msg = CopyVariable($CAN_Send_Msg_22);
+	call ZLG_CAN_Send();//send CAN msg
+	$MeasurementName = "PCBA_SN_Write>Result";
+	SleepMilliseconds(50);
+	call ZLG_CAN_Rev();
+	$CAN_Rev_ExpMsg = "6E F1 8C";
+	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+	$Write_Loop = $Write_Loop +1;
+    }
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    return;
+  }
+  
+  
+function CDCU_PCBA_SN_Read()
+{
+  UpdateStatus("~~~~~~~~~~~~~ CDCU_PCBA_SN_Read ~~~~~~~~~~");
+  $TestName = New("String","CDCU_PCBA_SN_Read");
+  SetTestName($TestName); 
+    //~ $PCBA_SN_Read_Loop =0;
+    //~ $Result =false;
+     //~ while($PCBA_SN_Read_Loop<5 && !$Result)
+     //~ {
+       	//~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+      //~ $PCBA_SN_Read_Loop =$PCBA_SN_Read_Loop+1;
+     //~ }
+      $canID = "0x721";
+      //1返回报文02 50 03
+      $CAN_Send_Msg = "03 22 F1 8C 00 00 00 00";
+      $CAN_Rev_ExpMsg = "10 13 62 F1 8C "; 	//62 F1 8C <PCBASN ASCII>.测试显示结果需将 16 进制 ASCII 字符转换为正常显示的字符串
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(50);
+      call ZLG_CAN_Rev();
+      UpdateStatus( $CAN_Rev_Msg);
+
+      $SN1 = StringCut($CAN_Rev_Msg, $CAN_Rev_ExpMsg, 8);
+      $SN1 = HexStringToString($SN1, " ");
+      UpdateStatus( $SN1);
+      //MeasurementName = "CDCU_PCBA_SN_Read2";
+      $CAN_Send_Msg = "30 00 14 00 00 00 00 00";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(200);
+      call ZLG_CAN_Rev();
+      UpdateStatus($CAN_Rev_Msg);
+      $SN2 = StringParse($CAN_Rev_Msg, "ID:07A1,data:21", ";");
+      //~ $SN2 = StringCut($CAN_Rev_Msg, "21", 21);
+      $SN2 = HexStringToString($SN2, " ");
+      UpdateStatus( $SN2);
+
+      $SN3 = StringCut($CAN_Rev_Msg, "22", 18);
+      $SN3 = HexStringToString($SN3, " ");
+      UpdateStatus( $SN3);
+
+      $CDCU_SN = StringCat($SN1, $SN2);
+      $CDCU_SN = StringCat($CDCU_SN, $SN3);
+
+      $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+
+      $SN_Length = StringLength($CDCU_SN);
+      UpdateStatus( $SN_Length);
+      $Result = NumericComparison($SN_Length, 16, "==");
+      UpdateStatus( $Result);
+      $MeasurementName = "MCU_SN_Read";
+      RecordMeasurementPassFail($MeasurementName, $CDCU_SN, "Bool", true, $Result);//和输入结果做个对比
+      $MeasurementName = "PCBA_SN_Length";
+      RecordMeasurementPassFail($MeasurementName, $SN_Length, "Bool", true, $Result);
+      $MeasurementName = "Compare_SN_Scanned";
+      $Result = StringComparison($CDCU_SN,$SerialNumber,"==")
+      RecordMeasurementPassFail($MeasurementName, $SerialNumber, "Bool", true, $Result);
+
+  return;
+}
+
+
+  
+function CDCU_EQID_Write()
+{
+  UpdateStatus("~~~~~~~~~~~~~ CDCU_EQID_Write ~~~~~~~~~~");
+  $TestName = New("String","CDCU_EQID_Write");
+  SetTestName($TestName); 
+
+  //~ $SerialNumber = "B004H6BM0024JV06";
+  //~ $g_ModelType ="9110300FA200R3";
+
+  //所有测试前,一定要进入EOL测试模式.
+  //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>写入产品设备唯一码<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  $canID = "0x721";
+  //第 1~4 位表示供应商代码
+  //捷普代码//供应商代码 100701， 取后 4 位字符， 写为 0x07 01， 无需转换为ASCII 码
+  $CDU_SupplierNo = "07 01";
+  $Temp = "CDU_SupplierNo=" + $CDU_SupplierNo;
+  UpdateStatus($Temp);
+  //第 5~6 位表示年,年/月/日信息来源于产品 PCBA SN 号码中 3 位 DataCode 信息。
+  //第 7~8 位表示月
+  //第 9~10 位表示日
+  $Year = StringSub($SerialNumber,5,1); 。
+  $Year = StringToHexString($Year);
+  $Month = StringSub($SerialNumber,6,1);
+  $Month = StringToHexString($Month);
+  $Day = StringSub($SerialNumber,7,1);
+  $Day = StringToHexString($Day);
+  $CDU_DateCode =  $Year + $Month + $Day;//转换为ASCII 码
+  $Temp = "CDU_DateCode=" + $CDU_DateCode;
+  UpdateStatus($Temp);
+
+  //第 11~12 位表示产品零件号代码,取产品零件号第 10 位字符， 转换为 16 进制 ASCII 编码 0xXX， 
+  //该零件号代码最大支持 255 个零件号
+  //转换为 16 进制 ASCII 编码 0x01,该零件号代码最大支持 255 个零件号。
+  // 零件号码来自Write PN Step 的 $g_ModelType (Demo:9110300FA200R3)
+  $CDU_PartNo = StringSub($g_ModelType,9,1);
+
+  // 从INI 文件获取对应的值
+  //~ $ConfigPath = "D:\\21270_XPeng_F30_CDCU_PCBA_FCT\\Scripts\\";
+  //~ $g_SysteM_Config_File = StringCat($ConfigPath,"PCBA_FCT.ini");
+  $CDU_PartNo = ReadIniFile($g_SysteM_Config_File,"EQID",$CDU_PartNo);
+  $CDU_PartNo_len= StringLength($CDU_PartNo);
+
+  if($CDU_PartNo_len !=2)
+  {
+      $Temp = "CDU_PartNo=" + $CDU_PartNo;
+      UpdateStatus($Temp);
+      Fail("Get INI CDU_PartNo Error!");
+  }
+  $Temp = "CDU_PartNo=" + $CDU_PartNo;
+  UpdateStatus($Temp);
+
+  //第 13 位表示产线线别，用来表示相同产品产线编号，该线别代码在统 同一工厂内最大支持 15 条产线。
+  //Demo 0x1,  无须转HEX
+  $CDU_LineNo = "1";
+  //第 14~16 位表示产品序列号。
+  //产品序列号来源于产品 PCBA SN 号码中 4 位序列号信息，该线产品序 列号定义最大支持 4094 pcs 产品。
+  //DEMO :FE38C4HP000100A0， 其中 9~12 位为生产序列号，将序列号转换位 3 位 16 进制 ASCII 码 0x001
+  $UUTNo = StringSub($SerialNumber,8,4);
+  $UUTNo = IntegerToHexString($UUTNo,3);
+  $UUTNo = $CDU_LineNo+$UUTNo;//前面加上$CDU_LineNo
+  $Str_1= StringSub($UUTNo,0,2)
+  $Str_2 = StringSub($UUTNo,2,2)
+  $CDU_LineNo_UUTNo = $Str_1+" "+$Str_2;
+  $Temp = "CDU_LineNo&UUTNo="+$CDU_LineNo_UUTNo;
+  UpdateStatus($Temp);
+  UpdateStatus("数据来源");
+  UpdateStatus ($SerialNumber);
+  UpdateStatus($g_ModelType);
+  $CDU_EQID = $CDU_SupplierNo+" "+$CDU_DateCode+$CDU_PartNo+" "+$CDU_LineNo_UUTNo;
+  $Temp = "CDU_EQID="+$CDU_EQID;
+  UpdateStatus($Temp);
+
+  //转换成两帧发送
+  $CAN_Send_Msg_10 = StringSub($CDU_EQID,0,8);
+  $CAN_Send_Msg_10 = "10 0B 2E CF 20 "+ $CAN_Send_Msg_10;
+  UpdateStatus($CAN_Send_Msg_10);
+
+  $CAN_Send_Msg_21 = StringSub($CDU_EQID,9,22);
+  $CAN_Send_Msg_21 = StringTrim($CAN_Send_Msg_21);
+  $CAN_Send_Msg_21 = "21 "+ $CAN_Send_Msg_21+" AA AA";
+  UpdateStatus($CAN_Send_Msg_21);
+  //-------Write start ----- 
+  $Write_Loop =0;
+  $Result =false;
+   while($Write_Loop<5 && !$Result)
+   {
+      $CAN_Send_Msg = CopyVariable($CAN_Send_Msg_10);
+      call ZLG_CAN_Send();
+      SleepMilliseconds(50);
+      $CAN_Rev_ExpMsg = "30 00 14";
+      //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+      //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+      $CAN_Send_Msg = CopyVariable($CAN_Send_Msg_21);
+      call ZLG_CAN_Send();
+      SleepMilliseconds(20);
+
+      UpdateStatus($CAN_Send_Msg);
+      $CAN_Rev_ExpMsg = "6E CF 20";
+      $MeasurementName = "CDCU_EQID_Write";
+      call ZLG_CAN_Send();//将设备唯一码 344A41011001 写入 EEPROM 指令报文为：2E CF 20 00 89 34 4A 41 01 10 01
+      SleepMilliseconds(20);
+      call ZLG_CAN_Rev();
+      $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+     $Write_Loop =$Write_Loop +1;
+       
+   }
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+     $MeasurementName ="Write_EQID_HEX";
+    RecordMeasurementPassFail($MeasurementName, $CDU_EQID, "Bool", true, $Result);
+    return;
+ }
+  
+  
+function CDCU_EQID_Read()
+{
+    
+    //~ 62 CF 20 <DEVICES ID ASCII>
+ UpdateStatus("~~~~~~~~~~~~~ CDCU_EQID_Read ~~~~~~~~~~");
+  $TestName = New("String","CDCU_EQID_Read");
+  SetTestName($TestName); 
+     $MeasurementName = "CDCU_EQID_Read";
+    $canID = "0x721";
+    //1返回报文02 50 03
+    $CAN_Send_Msg = "03 22 CF 20 00 00 00 00";
+    $CAN_Rev_ExpMsg = "10 0B 62 CF 20 "; 	//62 CF 20 <DEVICES ID ASCII>.测试显示结果需将 16 进制 ASCII 字符转换为正常显示的字符串
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    call ZLG_CAN_Rev();
+    UpdateStatus( $CAN_Rev_Msg);
+    //CAN_Rev_Msg = ID:07A1,data:10 0B 62 CF 20 07 01 36 
+    $SN1 = StringCut($CAN_Rev_Msg, $CAN_Rev_ExpMsg, 8);
+    //~ $SN1 = HexStringToString($SN1, " ");
+    UpdateStatus( $SN1);
+
+    $CAN_Send_Msg = "30 00 14 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(250);//需要时间返回
+    call ZLG_CAN_Rev();
+    
+    $SN2 = StringParse($CAN_Rev_Msg, "ID:07A1,data:21", "AA");
+    //~ $SN2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 21);
+    //~ $SN2 = HexStringToString($SN2, " ");
+    UpdateStatus( $SN2);
+    
+    $Read_CDCU_EQID = StringCat($SN1, $SN2);
+    $Temp ="Read_CDCU_EQID_HEX="+$Read_CDCU_EQID;
+    UpdateStatus( $Temp);
+    //~ $CDCU_EQID = StringCat($CDCU_PN, $SN3);
+    $CDCU_EQID_Str = HexStringToString($Read_CDCU_EQID, " ");
+    $SN_Length = StringLength($CDCU_EQID_Str);
+    UpdateStatus( $SN_Length);
+    $Result = NumericComparison($SN_Length, 8, "==");
+    UpdateStatus( $Result);
+    $MeasurementName = "Read_CDCU_EQID_HEX";
+    RecordMeasurementPassFail($MeasurementName, $Read_CDCU_EQID, "Bool", true, $Result);//和输入结果做个对比
+    $MeasurementName = "CDCU_EQID_Length";
+    RecordMeasurementPassFail($MeasurementName, $SN_Length, "Bool", true, $Result);
+    return;
+  }
+    
+function CDCU_PN_Write()
+{
+   UpdateStatus("~~~~~~~~~~~~~ CDCU_PN_Write ~~~~~~~~~~");
+  $TestName = New("String","CDCU_PN_Write");
+  SetTestName($TestName); 
+    //~ $g_ModelType="9110300FA100R2";
+    $PN_Hex_Code = StringToHexString($g_ModelType);
+    UpdateStatus($g_ModelType);
+    UpdateStatus($PN_Hex_Code);  
+    $Write_Loop =0;
+    $Result =false;
+     while($Write_Loop<5 && !$Result)
+    {
+      // Get the first frame Data
+	$CAN_Send_Msg_10 = StringSub($PN_Hex_Code,0,8);
+	$CAN_Send_Msg_10 = "10 11 2E F1 87 "+ $CAN_Send_Msg_10;
+	//~ UpdateStatus($CAN_Send_Msg_10);
+      // Get the second frame Data
+	$CAN_Send_Msg_21 = StringSub($PN_Hex_Code,9,21);
+	$CAN_Send_Msg_21 = StringTrim($CAN_Send_Msg_21);
+	$CAN_Send_Msg_21 = "21 "+ $CAN_Send_Msg_21;
+	UpdateStatus($CAN_Send_Msg_21);
+	//Get the third frame data
+	$CAN_Send_Msg_22 = StringSub($PN_Hex_Code,29,39);
+	$CAN_Send_Msg_22 = StringTrim($CAN_Send_Msg_22);
+	$CAN_Send_Msg_22 = "22 "+ $CAN_Send_Msg_22+" AA AA AA";
+    
+
+	$CAN_Send_Msg =CopyVariable($CAN_Send_Msg_10);
+	//~ UpdateStatus($CAN_Send_Msg);
+	//~ $CAN_Rev_ExpMsg = "30 00 14";
+	//~ $MeasurementName = "CDCU_PN_Write>request";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(30);
+	call ZLG_CAN_Rev();
+	$Temp="CDCU_PN_Write_request Rev"+"="+$CAN_Rev_Msg;
+	UpdateStatus($Temp);
+	
+	//~ SleepMilliseconds(20);
+	//~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+	//~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+	
+	$CAN_Send_Msg =CopyVariable($CAN_Send_Msg_21);
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+	
+	 $CAN_Send_Msg =CopyVariable($CAN_Send_Msg_22);
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(100);
+	call ZLG_CAN_Rev();
+	$Result = StringContains($CAN_Rev_Msg,"03 6E F1 87");
+	$Write_Loop =$Write_Loop+1;
+      }
+      $MeasurementName = "CDCU_PN_Write>Result";
+      RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+      return;
+    }
+    
+function CDCU_PN_Read()
+{
+       UpdateStatus("~~~~~~~~~~~~~ CDCU_PN_Read ~~~~~~~~~~");
+  $TestName = New("String","CDCU_PN_Read");
+  SetTestName($TestName); 
+    //~ //>>>>>>>>>>>>>>>>读取 CDCU 物料号信息<<<<<<<<<<<<<<<<<
+ 
+    //~ 22 F1 87 
+    //62 F1 87 <PN ASCII>
+  $MeasurementName = "CDCU_PN_Read";
+    $canID = "0x721";
+
+    //1返回报文02 50 03
+    $CAN_Send_Msg = "03 22 F1 87 00 00 00 00";
+    $CAN_Rev_ExpMsg = "10 11 62 F1 87 "; 	//62 F1 87 <PN ASCII>.测试显示结果需将 16 进制 ASCII 字符转换为正常显示的字符串
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    call ZLG_CAN_Rev();
+    //~ UpdateStatus( "++++++++++++++++++++++++++");
+    //~ UpdateStatus( $CAN_Rev_Msg);
+
+    $SN1 = StringCut($CAN_Rev_Msg, $CAN_Rev_ExpMsg, 9);
+    //~ $SN1 = HexStringToString($SN1, " ");
+    UpdateStatus( $SN1);
+
+    $CAN_Send_Msg = "30 00 14 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(250);//需要时间返回
+    call ZLG_CAN_Rev();
+    
+    //~ $SN2 = StringParse($CAN_Rev_Msg, "ID:07A1,data:21", ";");
+    $SN2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 21);
+    //~ $SN2 = HexStringToString($SN2, " ");
+    UpdateStatus( $SN2);
+    
+    //~ $SN3 = StringCut($CAN_Rev_Msg, "D:07A1,data:22 ", 21);
+    $SN3 = StringParse($CAN_Rev_Msg, "ID:07A1,data:22 ", "AA");
+    //~ $SN3 = HexStringToString($SN3, " ");
+    UpdateStatus( $SN3);
+    
+    $Read_CDCU_PN = StringCat($SN1, $SN2);
+    $Read_CDCU_PN = StringCat($Read_CDCU_PN, $SN3);
+    $temp="Read_PN_HEX="+$Read_CDCU_PN;
+    UpdateStatus($temp);
+    $Read_CDCU_PN = HexStringToString($Read_CDCU_PN, " ");
+    
+    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    
+
+    $SN_Length = StringLength($Read_CDCU_PN);
+    UpdateStatus( $SN_Length);
+    $Result = NumericComparison($SN_Length, 14, "==");
+    UpdateStatus( $Result);
+    RecordMeasurementPassFail($MeasurementName, $Read_CDCU_PN, "Bool", true, $Result);//和输入结果做个对比
+    $MeasurementName = "Read_CDCU_PN_Length";
+    RecordMeasurementPassFail($MeasurementName, $SN_Length, "Bool", true, $Result);
+     $MeasurementName = "Compare Write PN";
+     $Result =StringComparison($Read_CDCU_PN,$g_ModelType , "==");
+     RecordMeasurementPassFail($MeasurementName, $g_ModelType, "Bool", true, $Result);
+    return;
+    }
+  
+  
+function CDCU_OfflineF2_Read()
+{
+    //读取CDCU PCBA序列号
+   $MeasurementName = "CDCU_OfflineF2_Read";
+    $canID = "0x721";
+    //1返回报文02 50 03
+    $CAN_Send_Msg = "03 22 A5 F2 00 00 00 00";
+    $CAN_Rev_ExpMsg = "62 A5 F2 1A"; 	//62 A5 F2 1A
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    call ZLG_CAN_Rev();//ID:07A1,data:04 62 A5 F2 1A AA AA AA ;
+    UpdateStatus( $CAN_Rev_Msg);
+    $CAN_Rev_Msg = StringCut($CAN_Rev_Msg, "ID:07A1,data:04 ", 12);
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    
+  
+    UpdateStatus( $Result);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);//
+
+  
+  return;
+}
+function CDCU_ECU_WorkMode_1A_Write()
+{
+    /////////////////////////工作模式状态为 0x1A//Programming/////////////////////
+         UpdateStatus("~~~~~~~~~~~~~ CDCU_ECU_WorkMode_1A_Write ~~~~~~~~~~");
+  $TestName = New("String","CDCU_ECU_WorkMode_1A_Write");
+  SetTestName($TestName); 
+      $canID = "0x721";
+
+    $CAN_Send_Msg = "04 2E A5 F2 1A AA AA AA";
+    $CAN_Rev_ExpMsg = "6E A5 F2";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_ECU_WorkMode_Write";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+  
+    SleepMilliseconds(1000);//间隔时间建议1000ms
+    call ZLG_CAN_Rev();
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  //==================================请求结果=====================
+  
+ 
+  return;
+    
+    }
+    
+    
+    
+//==================以下全部是 31 01 指令===========================
+function CDCU_MCU_EEPROM_Erase()
+{
+    //所有测试前,一定要进入EOL测试模式.
+    //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>清除 MCU EEPROM (UU05)数据<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    //~ $canID = "0x721";
+
+  
+      //~ $MeasurementName = "CDCU_MCU_EEPROM_Erase";
+  
+    //~ $StartRoutine3101 = "10 3E 31 01 C1 08 00 01";
+    //~ $MCURes7101 = "71 01 C1 08";	
+    //~ $RequestRoutineResult3103 =  "04 31 03 C1 08 00 00 00";
+    //~ $ANDRes7103 =  "71 03 C1 08 04 00 01";	//sample: 71 03 C0 02 04 00 01
+    //~ $Send3000014 = "30 00 14 00 00 00 00 00";
+  
+    //~ call Send103E3101_RecSingle7103();
+  
+     //#########>清除 MCU EEPROM (UU05)数据<###########
+  SleepMilliseconds(250);
+   $TestName = New("String","清除 MCU EEPROM (UU05)数据");
+   SetTestName($TestName);
+  
+    $MeasurementName = "CDCU_MCU_EEPROM_Erase";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=2000;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C1 08 00 01";
+    $MCURes7101 = "71 01 C1 08";	
+    $RequestRoutineResult3103 =  "04 31 03 C1 08 00 00 00";
+    $ANDRes7103 =  "71 03 C1 08 04 00 01";	//sample: 71 03 C0 02 04 00 01
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    $ExtMsg ="02";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+  
+
+  }
+  
+
+    
+function CDCU_MCU_SW_Version_Check()
+{
+  
+   //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_MCU_SW_Version_Check";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 01 01 01";
+    $MCURes7101 = "71 01 C0 01";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 =  "71 03 C0 01 04 01 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    
+    $ExtMsg = ReadIniFile($g_SysteM_Config_File,"Version","CDCU_MCU_SW_Version");
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  
+  return;
+}
+  
+function CDCU_Boot_SW_Version_Check()
+{
+  
+     //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_Boot_SW_Version_Check1";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =   "10 3E 31 01 C0 01 01 02";
+    $MCURes7101 = "71 01 C0 01";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 ="71 03 C0 01 04 01 02";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="DID_F180_DATA_B.E";
+    $ExtMsg = ReadIniFile($g_SysteM_Config_File,"Version","CDCU_Boot_SW_Version");
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+
+  return;
+}
+  
+
+function CDCU_SOC_enSW_Version_Check()
+{
+    //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+  //XMARTQ9ZHF30C6_V0.7.0_20221228181600.0
+  //58 4D 41 52 54 51 39 5A 48 46 33 30 43 36 5F 56 30 2E 37 2E 30 5F 32 30 32 32 31 32 32 38 31 38 31 36 30 30 2E 30 
+  
+    $MeasurementName = "CDCU_SOC_enSW_Version_Check";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 01 01 00";
+    $MCURes7101 = "71 01 C0 01";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 =  "71 03 C0 01 04 01 00";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="XMARTQ9ZHF30C6_V0.7.0_20221228181600.0";
+     $ExtMsg = ReadIniFile($g_SysteM_Config_File,"Version","CDCU_SOC_enSW_Version");
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+function CDCU_HW_Version_Check()
+{
+    //##########核心板电源管理温度检测###########
+  UpdateStatus("~~~~~~~~~~~~~ CDCU_HW_Version_Check ~~~~~~~~~~");
+  //~ $TestName = New("String","CDCU_HW_Version_Check");
+  SetTestName($TestName); 
+  
+    $MeasurementName = "CDCU_HW_Version_Check";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 01 01 04";
+    $MCURes7101 = "71 01 C0 01";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 =  "71 03 C0 01 04 01 04";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="0x06";
+  $ExtMsg = ReadIniFile($g_SysteM_Config_File,"Version"," CDCU_HW_Version");
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+
+function CDCU_MAP_Offline_Version_Check()
+{
+    //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_MAP_Offline_Version_Check";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 01 01 03";
+    $MCURes7101 = "71 01 C0 01";
+    $RequestRoutineResult3103 = "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 =  "71 03 C0 01 04 01 03";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    $ExtMsg ="N/A";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+
+
+
+
+function CDCU_AVASeff_SW_Version_Check()
+{
+     //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_AVASeff_SW_Version_Check";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 01 01 09";
+    $MCURes7101 = "71 01 C0 01";
+    $RequestRoutineResult3103 = "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 =  "71 03 C0 01 04 01 09";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+     $ExtMsg = ReadIniFile($g_SysteM_Config_File,"Version"," CDCU_AVASeff_SW_Version");
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  
+  return;
+}
+
+
+function CDCU_SOC_EEPRROM_Version_Check()
+{
+     //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_SOC_EEPRROM_Version_Check";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 01 01 07";
+    $MCURes7101 = "71 01 C0 01";
+    $RequestRoutineResult3103 = "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 =  "71 03 C0 01 04 01 07";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+      //~ $ExtMsg ="F30_0x490C56EE";
+     $ExtMsg = ReadIniFile($g_SysteM_Config_File,"Version"," CDCU_SOC_EEPRROM_Version");
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  
+  
+  return;
+}
+
+
+
+function CDCU_BTvice_FW_Version_Check()
+{
+     //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_AVASeff_SW_Version_Check";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 01 01 0A";
+    $MCURes7101 = "71 01 C0 01";
+    $RequestRoutineResult3103 = "04 31 03 C0 01 00 00 00";
+    $ANDRes7103 =  "71 03 C0 01 04 01 0A";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+  
+function CDCU_AllHWSW_Version_Check()
+{
+      //##########5.10 检查软硬件版本号信息###########
+  SleepMilliseconds(250);
+   $TestName = New("String","5.10 Version_Check");
+   SetTestName($TestName);
+  call CDCU_SOC_enSW_Version_Check();
+  call CDCU_MCU_SW_Version_Check();
+  call CDCU_Boot_SW_Version_Check();
+  //~ call CDCU_MAP_Offline_Version_Check();
+  call CDCU_HW_Version_Check();
+  call CDCU_SOC_EEPRROM_Version_Check();
+  //~ call CDCU_AVASeff_SW_Version_Check();
+  //~ call CDCU_BTvice_FW_Version_Check();
+
+  return;
+  }
+ 
+
+function CDCU_CDUID_Read()
+{
+    //##########核心板电源管理温度检测###########
+  SleepMilliseconds(250);
+   $TestName = New("String","CDCU_CDUID_Read");
+   SetTestName($TestName);
+    $MeasurementName = "CDCU_CDUID_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=200;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 13 02 02";
+    $MCURes7101 = "71 01 C0 13";	
+    $RequestRoutineResult3103 = "04 31 03 C0 13 00 00 00";
+    $ANDRes7103 =  "71 03 C0 13 04 02 02";//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    $ExtMsg ="F300701";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+function CDCU_UFS_CHIP_Read()
+{
+    //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   $TestName = New("String","5.11 读取 UFS 芯片型号信息");
+   SetTestName($TestName);
+    $MeasurementName = "CDCU_UFS_CHIP_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 13 01 01";
+    $MCURes7101 ="71 01 C0 13";	
+    $RequestRoutineResult3103 = "04 31 03 C0 13 00 00 00";
+    $ANDRes7103 =  "71 03 C0 13 04 01 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+
+
+
+function CDCU_NET_4G_Check()
+{
+    //##########5.9 以太网通讯功能测试##########
+  $canID = "0x721";
+  $Names = "5.12 以太网通讯功能测试";
+  SetTestName($Names);
+  UpdateStatus($Names);
+
+  $MeasurementName = "CDCU_NET_4G_Check";//1 5G TBox 以太网 172.20.1.44
+  $IP = "AC 14 01 2C";
+  call CDCU_PingNet();
+  
+  return;
+}
+
+function CDCU_Speaker_Vol_Set()
+{
+
+    //~ $canID = "0x721";
+
+    //~ $MeasurementName = "CDCU_Speaker_Vol_Set";
+  
+    //~ $StartRoutine3101 =  "10 3E 31 01 C0 07 02 00 18"; 
+    //~ $MCURes7101 = "71 01 C0 07";	
+    //~ $RequestRoutineResult3103 =  "04 31 03 C0 07 00 00 00";
+    //~ $ANDRes7103 =  "71 03 C0 07 04 02 00";	//sample: 71 03 C0 02 04 00 01
+    //~ $Send3000014 = "30 00 14 00 00 00 00 00";
+  
+    //~ call Send103E3101_RecSingle7103();
+  
+  
+    //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_Speaker_Vol_Set";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 07 02 00 18"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =  "71 03 C0 07 04 02 00";	//sample: 71 03 C0 02 04 00 01
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+  
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  return;
+}
+
+
+function CDCU_Speaker_On()
+{
+    //##########CDCU_Speaker_On###########
+    //~ $canID = "0x721";
+
+    //~ $MeasurementName = "CDCU_Speaker_On";
+
+    //~ $StartRoutine3101 =   "10 3E 31 01 C0 07 01 00"; 
+    //~ $MCURes7101 = "71 01 C0 07";	
+    //~ $RequestRoutineResult3103 =  "04 31 03 C0 07 00 00 00";
+    //~ $ANDRes7103 =  "71 03 C0 07 04 01 00";	//sample: 71 03 C0 02 04 00 01
+    //~ $Send3000014 = "30 00 14 00 00 00 00 00";
+  
+    //~ call Send103E3101_RecSingle7103();
+      //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_Speaker_On";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =   "10 3E 31 01 C0 07 01 00"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =  "71 03 C0 07 04 01 00";	//sample: 71 03 C0 02 04 00 01
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+
+  return;
+}
+
+
+function CDCU_Speaker_Off()
+{
+    //##########连接 XP-AUTO 无线路由###########
+    $canID = "0x721";
+
+    //~ $CAN_Send_Msg = "10 3E 31 01 C0 07 01 01"; //31 01 C0 09 02 02 chNO. xx10 xx11 xx12 xx13 xx20 xx21 xx22 xx23 .....
+    //~ $CAN_Rev_ExpMsg = "71 01 C0 07";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    //~ $MeasurementName = "CDCU_Speaker_Vol_Off";
+  
+  
+    //~ $StartRoutine3101 =  "10 3E 31 01 C0 07 01 01"; 
+    //~ $MCURes7101 = "71 01 C0 07";	
+    //~ $RequestRoutineResult3103 =  "04 31 03 C0 07 00 00 00";
+    //~ $ANDRes7103 =   "71 03 C0 07 04 01 01";	//sample: 71 03 C0 02 04 00 01
+    //~ $Send3000014 = "30 00 14 00 00 00 00 00";
+  
+    //~ call Send103E3101_RecSingle7103();
+  
+      //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_Speaker_Off";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 =  "10 3E 31 01 C0 07 01 01"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =   "71 03 C0 07 04 01 01";	//sample: 71 03 C0 02 04 00 01
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+  
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+    SleepMilliseconds(300);
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  
+  return;
+}
+
+
+function CDCU_Speaker_Check()
+{
+  $Names = " 5.13 Speaker_Function_Test";
+  SetTestName($Names);
+  UpdateStatus($Names);
+
+    SleepMilliseconds(200);
+  call CDCU_Speaker_Vol_Set();//设置音响音量
+    SleepMilliseconds(200);
+  call CDCU_Speaker_On();//打开音响
+    SleepMilliseconds(200);
+//DAQ分析Speaker频率,幅值,失真.
+  $deviceId = $FT_DAQ_IDs;
+  $FreqLowerLimit = 0.99;
+  $FreqUpperLimit = 1.01;
+  $ACrmsLowerLimit = 0.5;
+  $ACrmsUpperLimit = 2;
+  $THDLowerLimit = 0.001;
+  $THDUpperLimit = 1;
+  //~ OperatorPrompt("Speaker","");
+  
+  //FL
+  $channel = 16;
+  ($avg, $min, $max, $rms, $ACrms, $pkpk, $baseFreq, $THD) = FT_DAQ_SilverX_MeasureVoltageAC($deviceId,$channel,"10V",100000,1000,10);
+  
+  $SpeakerName = "FL";
+  $TestName = $SpeakerName + "_Freq";
+  $baseFreq = $baseFreq/1000;
+  RecordMeasurementWithLimits( $TestName,$baseFreq,"KHz","TRUE",$FreqLowerLimit,$FreqUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_ACrms";
+  $ACrms = $ACrms;
+  RecordMeasurementWithLimits( $TestName,$ACrms,"V","TRUE",$ACrmsLowerLimit,$ACrmsUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_THD";
+  $THD = $THD*100;
+  RecordMeasurementWithLimits( $TestName,$THD,"%","TRUE",$THDLowerLimit,$THDUpperLimit,"TRUE");
+
+  Sleep(2);
+  call MCU_EOL_HeartBeat();
+  
+  //FR
+  $channel = 17;
+  ($avg, $min, $max, $rms, $ACrms, $pkpk, $baseFreq, $THD) = FT_DAQ_SilverX_MeasureVoltageAC($deviceId,$channel,"10V",100000,1000,10);
+  
+  $SpeakerName = "FR";
+    $TestName = $SpeakerName + "_Freq";
+  $baseFreq = $baseFreq/1000;
+  RecordMeasurementWithLimits( $TestName,$baseFreq,"KHz","TRUE",$FreqLowerLimit,$FreqUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_ACrms";
+  $ACrms = $ACrms;
+  RecordMeasurementWithLimits( $TestName,$ACrms,"V","TRUE",$ACrmsLowerLimit,$ACrmsUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_THD";
+  $THD = $THD*100;
+  RecordMeasurementWithLimits( $TestName,$THD,"%","TRUE",$THDLowerLimit,$THDUpperLimit,"TRUE");
+  
+    Sleep(2);
+  call MCU_EOL_HeartBeat();
+  
+    //RL
+  $channel = 18;
+  ($avg, $min, $max, $rms, $ACrms, $pkpk, $baseFreq, $THD) = FT_DAQ_SilverX_MeasureVoltageAC($deviceId,$channel,"10V",100000,1000,10);
+  
+  $SpeakerName = "RL";
+    $TestName = $SpeakerName + "_Freq";
+  $baseFreq = $baseFreq/1000;
+  RecordMeasurementWithLimits( $TestName,$baseFreq,"KHz","TRUE",$FreqLowerLimit,$FreqUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_ACrms";
+  $ACrms = $ACrms;
+  RecordMeasurementWithLimits( $TestName,$ACrms,"V","TRUE",$ACrmsLowerLimit,$ACrmsUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_THD";
+  $THD = $THD*100;
+  RecordMeasurementWithLimits( $TestName,$THD,"%","TRUE",$THDLowerLimit,$THDUpperLimit,"TRUE");
+
+    Sleep(2);
+  call MCU_EOL_HeartBeat();
+  
+  
+    //RR
+  $channel = 19;
+  ($avg, $min, $max, $rms, $ACrms, $pkpk, $baseFreq, $THD) = FT_DAQ_SilverX_MeasureVoltageAC($deviceId,$channel,"10V",100000,1000,10);
+  
+  $SpeakerName = "RR";
+    $TestName = $SpeakerName + "_Freq";
+  $baseFreq = $baseFreq/1000;
+  RecordMeasurementWithLimits( $TestName,$baseFreq,"KHz","TRUE",$FreqLowerLimit,$FreqUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_ACrms";
+  $ACrms = $ACrms;
+  RecordMeasurementWithLimits( $TestName,$ACrms,"V","TRUE",$ACrmsLowerLimit,$ACrmsUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_THD";
+  $THD = $THD*100;
+  RecordMeasurementWithLimits( $TestName,$THD,"%","TRUE",$THDLowerLimit,$THDUpperLimit,"TRUE");
+
+    Sleep(2);
+  call MCU_EOL_HeartBeat();
+  
+  
+  
+  ////DAQ分析AVAS频率,幅值,失真.
+  $FreqLowerLimit = 0.99;
+  $FreqUpperLimit = 1.01;
+  $ACrmsLowerLimit = 0.01;
+  $ACrmsUpperLimit = 1;
+  $THDLowerLimit = 0.001;
+  $THDUpperLimit = 1;
+  
+  //AVAS OUTA
+    $channel = 20;
+  ($avg, $min, $max, $rms, $ACrms, $pkpk, $baseFreq, $THD) = FT_DAQ_SilverX_MeasureVoltageAC($deviceId,$channel,"10V",100000,1000,10);
+  
+  $SpeakerName = "AVAS_OUTA";
+  $TestName = $SpeakerName + "_Freq";
+  $baseFreq = $baseFreq/1000;
+  RecordMeasurementWithLimits( $TestName,$baseFreq,"KHz","TRUE",$FreqLowerLimit,$FreqUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_ACrms";
+  RecordMeasurementWithLimits( $TestName,$ACrms,"V","TRUE",$ACrmsLowerLimit,$ACrmsUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_THD";
+  $THD = $THD*100;
+  RecordMeasurementWithLimits( $TestName,$THD,"%","TRUE",$THDLowerLimit,$THDUpperLimit,"TRUE");
+
+    Sleep(2);
+  call MCU_EOL_HeartBeat();
+  
+    //AVAS OUTB
+    $channel = 21;
+  ($avg, $min, $max, $rms, $ACrms, $pkpk, $baseFreq, $THD) = FT_DAQ_SilverX_MeasureVoltageAC($deviceId,$channel,"10V",100000,1000,10);
+  
+  $SpeakerName = "AVAS_OUTB";
+  $TestName = $SpeakerName + "_Freq";
+  $baseFreq = $baseFreq/1000;
+  RecordMeasurementWithLimits( $TestName,$baseFreq,"KHz","TRUE",$FreqLowerLimit,$FreqUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_ACrms";
+  RecordMeasurementWithLimits( $TestName,$ACrms,"V","TRUE",$ACrmsLowerLimit,$ACrmsUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_THD";
+  $THD = $THD*100;
+  RecordMeasurementWithLimits( $TestName,$THD,"%","TRUE",$THDLowerLimit,$THDUpperLimit,"TRUE");
+
+  SleepMilliseconds(200);
+  call CDCU_Speaker_Off();//关闭音响
+  SleepMilliseconds(200);
+    
+    return;
+}
+
+
+
+
+
+function CDCU_A2B_MIC_Open()
+{
+ //##########5.14 A2B 麦克风功能测试###########
+  SleepMilliseconds(250);
+   $TestName = New("String","5.14 A2B 麦克风功能测试");
+   SetTestName($TestName);
+    $MeasurementName = "CDCU_A2B_MIC_Open";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 05 03 01"; 
+    $MCURes7101 = "71 01 C0 05";
+    $RequestRoutineResult3103 = "04 31 03 C0 05 00 00 00";
+    $ANDRes7103 =  "71 03 C0 05 04 03 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+
+  return;
+}
+
+function CDCU_A2B_MIC_Close()
+{
+ //##########5.14 A2B 麦克风功能测试###########
+  SleepMilliseconds(250);
+   $TestName = New("String","5.14 A2B 麦克风功能测试");
+   SetTestName($TestName);
+    $MeasurementName = "CDCU_A2B_MIC_Close";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 05 03 00"; 
+    $MCURes7101 = "71 01 C0 05";
+    $RequestRoutineResult3103 = "04 31 03 C0 05 00 00 00";
+    $ANDRes7103 =  "71 03 C0 05 04 03 00";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+
+  return;
+}
+
+function CDCU_A2B_MIC_Check()
+{
+  call CDCU_A2B_MIC_Open();
+  //DAQ测试
+       OperatorPrompt("DAQ out","");
+
+  call CDCU_A2B_MIC_Close();
+  
+   return;
+  }
+
+
+
+    function CDCU_A2B_Ext_AMP_Open()
+{
+   //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_A2B_Ext_AMP_Open";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 05 02 01"; 
+    $MCURes7101 = "71 01 C0 05";
+    $RequestRoutineResult3103 = "04 31 03 C0 05 00 00 00";
+    $ANDRes7103 =  "71 03 C0 05 04 02 01";//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+function CDCU_A2B_Ext_AMP_Close()
+{
+   //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_A2B_Ext_AMP_Close";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 05 02 00"; 
+    $MCURes7101 = "71 01 C0 05";
+    $RequestRoutineResult3103 = "04 31 03 C0 05 00 00 00";
+    $ANDRes7103 =  "71 03 C0 05 04 02 00";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+  
+function CDCU_A2B_Ext_AMP_Check()
+{
+  call CDCU_A2B_Ext_AMP_Open();
+  //DAQ测试
+   OperatorPrompt("EXT","");
+  call CDCU_A2B_Ext_AMP_Close();
+  
+   return;
+  }
+ 
+function CDCU_MCU2AVAS_Audio_Check()
+{
+    //#########5.18 MCU 触发 AVAS 音频输出功能测试##########
+  SleepMilliseconds(250);
+   $TestName = New("String","5.18 MCU 触发 AVAS 音频输出功能测试");
+   SetTestName($TestName);
+  $canID = "0x721";
+
+  
+  call CDCU_MCU2AVAS_Audio_Open();
+  //音频分析仪或者DAQ分析频率,幅值,失真.
+  //~ RecordMeasurementWithLimits( $TestName,$Current,"mA","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+      OperatorPrompt("","");
+
+  call CDCU_MCU2AVAS_Audio_Close();
+
+    return;
+}
+
+function CDCU_MCU2AVAS_Audio_Open()
+{
+    //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_MCU2AVAS_Audio_Open";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 07 03 00"; 
+    $MCURes7101 = "71 01 C0 07";
+    $RequestRoutineResult3103 = "04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =  "71 03 C0 07 04 03 00";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  
+  return;
+}
+
+function CDCU_MCU2AVAS_Audio_Close()
+{
+     //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_MCU2AVAS_Audio_Close";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 07 03 01"; 
+    $MCURes7101 = "71 01 C0 07";
+    $RequestRoutineResult3103 = "04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =  "71 03 C0 07 04 03 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  
+  
+  return;
+}
+
+
+
+
+
+
+  function CDCU_AND2AVAS_Audio_Open()
+{
+  
+//##########5.18 MCU 触发 AVAS 音频输出功能测试###########
+  SleepMilliseconds(250);
+   $TestName = New("String","5.18 MCU 触发 AVAS 音频输出功能测试");
+   SetTestName($TestName);
+    $MeasurementName = "CDCU_TEMP_DDR_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E ";
+    $MCURes7101 = "71 01 ";	
+    $RequestRoutineResult3103 = "04 31 03 0";
+    $ANDRes7103 =  "71 03 ";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  
+  return;
+}
+
+
+function CDCU_AND2AVAS_Audio_Close()
+{
+     //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_TEMP_DDR_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 07 02 01"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 = "04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =  "71 03 C0 07 04 02 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  
+  return;
+}
+
+function CDCU_AND2AVAS_Audio_Check()
+{
+    //#########5.18 MCU 触发 AVAS 音频输出功能测试#########
+    $canID = "0x721";
+
+  
+  call CDCU_AND2AVAS_Audio_Open();
+  //音频分析仪或者DAQ分析频率,幅值,失真.
+  //~ RecordMeasurementWithLimits( $TestName,$Current,"mA","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+  
+  OperatorPrompt("","");
+  
+  call CDCU_AND2AVAS_Audio_Close();
+
+    return;
+}
+
+  
+  
+function CDCU_eMMC_RW()
+{
+        //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_eMMC_RW";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 05 03 01"; 
+    $MCURes7101 ="71 01 C0 05";
+    $RequestRoutineResult3103 =  "04 31 03 C1 05 00 00 00";
+    $ANDRes7103 =  "71 03 C1 05 04 03 01 ";//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  return;
+}
+
+function CDCU_eMMC_Vol_Read()
+{
+      //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_eMMC_Vol_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C1 05 03 02"; 
+    $MCURes7101 ="71 01 C0 05";
+    $RequestRoutineResult3103 =  "04 31 03 C1 05 00 00 00";
+    $ANDRes7103 = "71 03 C1 05 04 03 02 "; //sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  
+  return;
+}
+
+function CDCU_eMMC_Model_Read()
+{
+        //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_eMMC_Vol_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C1 05 03 03"; 
+    $MCURes7101 ="71 01 C0 05";
+    $RequestRoutineResult3103 =  "04 31 03 C1 05 00 00 00";
+    $ANDRes7103 = "71 03 C1 05 04 03 03 ";//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+  
+  
+  return;
+}
+
+
+function CDCU_eMMC_Functions_Check()
+{
+    //#########5.18 MCU 触发 AVAS 音频输出功能测试#########
+    $canID = "0x721";
+ SleepMilliseconds(250);
+   $TestName = New("String","5.20 eMMC 功能检查");
+   SetTestName($TestName);
+  
+  call CDCU_eMMC_RW();
+  call CDCU_eMMC_Vol_Read();
+  call CDCU_eMMC_Model_Read();
+  
+
+    return;
+}
+
+
+function CDCU_MCU_EEPROM__RW()
+{
+    //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_MCU_EEPROM__RW";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C1 05 01 01"; 
+    $MCURes7101 = "71 01 C1 05";
+    $RequestRoutineResult3103 ="04 31 03 C1 05 00 00 00";
+    $ANDRes7103 =  "71 03 C1 05 04 01 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+
+
+ 
+function CDCU_GPIO_Functions_Check()
+{
+    //#########5.22 SOC EEPROM 读写功能检查(无测试指令)#########
+    $canID = "0x721";
+  $MeasurementName ="CDCU_GPIO_Functions_Check";
+  $CAN_Rev_Msg = "no command";
+  $Result = false;
+  RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+ 
+  
+
+    return;
+}
+
+
+
+
+
+
+
+function CDCU_ExtAMP_CDCU_Speaker_On()
+{
+  //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_ExtAMP_CDCU_Speaker_On";
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Power_On_Port,$Amplifier_Power_line,1,$TaskName);
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 05 02 01"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 05 00 00 00";
+    $ANDRes7103 =  "71 03 C0 05 04 00 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+function CDCU_ExtAMP_CDCU_Speaker_OFF()
+{
+  //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_ExtAMP_CDCU_Speaker_OFF";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 05 02 00"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 05 00 00 00";
+    $ANDRes7103 =  "71 03 C0 05 04 00 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+function CDCU_ExtAMP_Speaker_Check()
+{
+  
+  call CDCU_ExtAMP_CDCU_Speaker_On();
+  $Names = " 5.15 A2B 外置功放功能测试";
+  SetTestName($Names);
+  UpdateStatus($Names);
+
+  //~ SleepMilliseconds(200);
+  //~ call CDCU_Speaker_Vol_Set();//设置音响音量
+  //~ SleepMilliseconds(200);
+  //~ call CDCU_Speaker_On();//打开音响
+  //~ SleepMilliseconds(200);
+  //DAQ分析Speaker频率,幅值,失真.
+  $deviceId = $FT_DAQ_IDs;
+  $FreqLowerLimit = 0.99;
+  $FreqUpperLimit = 1.01;
+  $ACrmsLowerLimit = 0.5;
+  $ACrmsUpperLimit = 2;
+  $THDLowerLimit = 0.001;
+  $THDUpperLimit = 1;
+  //~ OperatorPrompt("Speaker","");
+  
+  //FL
+  $channel = 22;
+  ($avg, $min, $max, $rms, $ACrms, $pkpk, $baseFreq, $THD) = FT_DAQ_SilverX_MeasureVoltageAC($deviceId,$channel,"10V",100000,1000,10);
+  
+  $SpeakerName = "FL";
+  $TestName = $SpeakerName + "_Freq";
+  $baseFreq = $baseFreq/1000;
+  RecordMeasurementWithLimits( $TestName,$baseFreq,"KHz","TRUE",$FreqLowerLimit,$FreqUpperLimit,"TRUE");
+  $TestName = $SpeakerName + "_ACrms";
+  $ACrms = $ACrms;
+  RecordMeasurementWithLimits( $TestName,$ACrms,"V","TRUE",$ACrmsLowerLimit,$ACrmsUpperLimit,"TRUE");
+  //~ $TestName = $SpeakerName + "_THD";
+  //~ $THD = $THD*100;
+  //~ RecordMeasurementWithLimits( $TestName,$THD,"%","TRUE",$THDLowerLimit,$THDUpperLimit,"TRUE");
+
+  Sleep(2);
+  call MCU_EOL_HeartBeat();
+   call CDCU_ExtAMP_CDCU_Speaker_OFF(); 
+    return;
+}
+
+
+function CDCU_ExtAMP_Mute_Enable()
+{
+  //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_ExtAMP_Mute_Enable";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 07 00 01"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 =  "04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =  "71 03 C0 07 04 00 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+function CDCU_ExtAMP_Mute_Disable()
+{
+  //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("String","5.7 下载、 验证大屏各项证书");
+   //~ SetTestName($TestName);
+    $MeasurementName = "CDCU_ExtAMP_Mute_Disable";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 07 00 00"; 
+    $MCURes7101 = "71 01 C0 07";	
+    $RequestRoutineResult3103 ="04 31 03 C0 07 00 00 00";
+    $ANDRes7103 =   "71 03 C0 07 04 00 00";		//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+
+function CDCU_ExtAMP_MUTE_AI_VolMeas()
+{
+  // ##########安卓进入 EOL 测试模式###########
+  //安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+  //一定要发送有效64字节报文的内容，测试软件需要补齐64字节.还要连续发送
+    $canID = "0x721";
+       $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+  //31 01 startRoutine
+    $CAN_Send_Msg = "10 3E 31 01 C1 09 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 09";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_ExtAMP_MUTE_AI_VolMeas";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 04 0A 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(2000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+    $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+
+      if($Frame_Rev_result_result==false)
+      {
+	$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==false)
+      {
+	 UpdateStatus( $CAN_Rev_Msg);
+	$CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  //==================================请求结果=====================
+    $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+      //requestRoutineResult
+	$CAN_Send_Msg = "04 31 03 C1 09 00 00 00";
+	$CAN_Rev_ExpMsg = "71 03 C1 09 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+	$MeasurementName = $MeasurementName+"->Request";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+      $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(2000);
+	call ZLG_CAN_Rev(); //receive CAN msg
+	$Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+
+      if($Frame_Rev_result_result==false)
+      {
+		$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==false)
+      {
+	$Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+	$Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 9);
+	$CAN_Rev_Msg = StringCat($Str1,$Str2);
+	UpdateStatus( "======================");
+	UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  return;
+}
+
+function CDCU_ExtAMP_Mute_Check()
+{
+  SetTestName("CDCU_ExtAMP_Mute_Check");
+    // Power On ExtAMP
+  //Relay connect JT108  PIN26 to 3.3v
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Power_On_Port,$Amplifier_Power_line,1,$TaskName);
+  SleepMilliseconds(500);
+  //~ End;
+  //~ OperatorInputPrompt("Power On ExtAMP");
+  call CDCU_ExtAMP_Mute_Enable();
+    // call relay
+    //call JT108 pin31 Vol meas
+    $measureName="ExtAMP_Mute_On_J018_P31";
+    $lowerLimit= 7;
+    $upperLimit=9;
+    $Rang= "100";
+    $Channel= "218";
+    $DMM= "DMM1";
+    //~ $DAQ6510_Handle = $DAQ6510_1_Handle;
+    $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+    //~ $g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+    SleepMilliseconds(500);
+    call  Keysight6510_MeasureVoltage();
+    RecordMeasurementWithLimits($measureName,$DMMRead_Vol,"V",true,$lowerLimit,$upperLimit,true);
+     call CDCU_ExtAMP_MUTE_AI_VolMeas();
+  //~ call CDCU_ExtAMP_MUTE_AI_VolMeas();
+  
+  call CDCU_ExtAMP_Mute_Disable();
+   // call relay
+  //call JT108 pin31 Vol meas
+    $measureName="ExtAMP_Mute_OFF_J018_P31";
+    $lowerLimit= 7;
+    $upperLimit=9;
+    $Rang= "100";
+    $Channel= "218";
+    $DMM= "DMM1";
+    //~ $DAQ6510_Handle = $DAQ6510_1_Handle;
+    $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+    //~ $g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+    SleepMilliseconds(500);
+    call  Keysight6510_MeasureVoltage();
+    RecordMeasurementWithLimits($measureName,$DMMRead_Vol,"V",true,$lowerLimit,$upperLimit,true);
+    call CDCU_ExtAMP_MUTE_AI_VolMeas();
+    return;
+  }
+  
+  function CDCU_BCAN_Interrupt_Check()
+{
+    //#########5.22 SOC EEPROM 读写功能检查(无测试指令)#########
+    $canID = "0x721";
+  
+  //有报文输出
+  //~ $MeasurementName ="CDCU_BCAN_Interrupt_Check";
+  //~ $CAN_Rev_Msg = "no command";
+  //~ $CAN_Rev_Msg = "wait for online debug";
+  //~ $Result = false;
+  //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+      $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+  {
+    $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_BCAN_CAN1_INH_Check";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+    call ZLG_CAN_Rev();
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 04 08 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(15);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(15);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(15);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(15);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(15);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(15);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(2000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+        $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+	if($Frame_Rev_result_result==false)
+      {
+	      $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	      UpdateStatus( $CAN_Rev_Msg);
+	      $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	      UpdateStatus( $CAN_Rev_Msg);
+      }
+  }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    return;
+}
+  
+ function CDCU_CCAN_Interrupt_Check()
+{
+     //#########5.22 SOC EEPROM 读写功能检查(无测试指令)#########
+    $canID = "0x721";
+  //~ $MeasurementName ="CDCU_ECAN_Interrupt_Check";
+  //~ $CAN_Rev_Msg = "no command";
+  //~ $CAN_Rev_Msg = "wait for online debug";
+  //~ $Result = false;
+  //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+     $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+
+    $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_CCAN_CAN5_INH DI_Check";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 03 05 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(2000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+      $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+      
+      if($Frame_Rev_result_result==false)
+    {
+	  $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+    }
+    
+    if($Frame_Rev_result_result==false)
+    {
+          UpdateStatus( $CAN_Rev_Msg);
+	  $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	  UpdateStatus( $CAN_Rev_Msg);
+    }
+    
+  }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  
+  return;
+}
+
+ function CDCU_ECAN_Interrupt_Check()
+{
+    //#########5.22 SOC EEPROM 读写功能检查(无测试指令)#########
+    $canID = "0x721";
+  //~ $MeasurementName ="CDCU_ECAN_Interrupt_Check";
+  //~ $CAN_Rev_Msg = "no command";
+  //~ $CAN_Rev_Msg = "wait for online debug";
+  //~ $Result = false;
+  //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+ 
+  $Frame_Rev_result_Loop=0;
+$Frame_Rev_result_times= 5;  //强制loop次数
+$Frame_Rev_result_result=false;
+
+while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+{
+
+  
+  
+  $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_ECAN_CAN4_INH DI _Check";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 04 01 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(2000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+    $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+    if($Frame_Rev_result_result==false)
+    {
+      $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+    }
+    if($Frame_Rev_result_result==true)
+    {
+          UpdateStatus( $CAN_Rev_Msg);
+	  $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	  UpdateStatus( $CAN_Rev_Msg);
+    }
+  }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  
+
+
+    return;
+}
+
+  
+ 
+function CDCU_ICAN_Interrupt_Check()
+{
+    //#########5.22 SOC EEPROM 读写功能检查(无测试指令)#########
+    $canID = "0x721";
+$Frame_Rev_result_Loop=0;
+$Frame_Rev_result_times= 5;  //强制loop次数
+$Frame_Rev_result_result=false;
+
+while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+{
+  
+  $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_ICAN_CAN2_INH DI _Check";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 03 04 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(2000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+        $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+    if($Frame_Rev_result_result==false)
+    {
+      $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+    }
+    if($Frame_Rev_result_result==true)
+    {
+          UpdateStatus( $CAN_Rev_Msg);
+	  $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	  UpdateStatus( $CAN_Rev_Msg);
+    }
+    
+  }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  
+
+
+
+    return;
+}
+
+function CDCU_TPCAN_Interrupt_Check()
+{
+    //#########5.22 SOC EEPROM 读写功能检查(无测试指令)#########
+    $canID = "0x721";
+
+  $Frame_Rev_result_Loop=0;
+$Frame_Rev_result_times= 5;  //强制loop次数
+$Frame_Rev_result_result=false;
+
+while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+{
+
+  $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_TPCAN_ CAN3_INH DI _Check";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 03 04 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(2000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+    
+        $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+    if($Frame_Rev_result_result==false)
+    {
+      $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+    }
+    if($Frame_Rev_result_result==true)
+    {
+          UpdateStatus( $CAN_Rev_Msg);
+	  $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	  UpdateStatus( $CAN_Rev_Msg);
+    }
+    
+  }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  
+
+
+    return;
+}
+
+
+function CDCU_LPCAN_Interrupt_Check()
+{
+    //#########5.22 SOC EEPROM 读写功能检查(无测试指令)#########
+    $canID = "0x721";
+
+  $Frame_Rev_result_Loop=0;
+$Frame_Rev_result_times= 5;  //强制loop次数
+$Frame_Rev_result_result=false;
+
+while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+{
+
+    $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_LPCAN_Interrupt_Check DI _Check";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+  
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 02 08 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(2000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+    
+        $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+    if($Frame_Rev_result_result==false)
+    {
+      $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+    }
+    if($Frame_Rev_result_result==true)
+    {
+          UpdateStatus( $CAN_Rev_Msg);
+	  $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	  UpdateStatus( $CAN_Rev_Msg);
+    }
+  }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    return;
+}
+
+ 
+function CDCU_G_Sensor_Check()
+{
+  //##########核心板电源管理温度检测###########
+  //~ SleepMilliseconds(250);
+   //~ $TestName = New("5.39 G-Sensor 测试");
+  //71 03 C0 1F 04 01 01 <Result>
+  //Result (1 个字节):1, 0x01: Running; 2, 0x02: Pass; 3, 0x03: Fail
+   SetTestName("5.39 G-Sensor 测试");
+    $MeasurementName = "CDCU_TEMP_DDR_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 1F 01 01"; 
+    $MCURes7101 = "71 01 C0 1F";
+    $RequestRoutineResult3103 = "04 31 03 C0 1F 00 00 00";
+    $ANDRes7103 =  "71 03 C0 1F 04 01 01";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    //~ $CurrentLowerLimit = 20;
+    //~ $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+    //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+      //~ SleepMilliseconds(20);
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+//==================以上全部是 31 01 指令===========================
+
+
+
+//============以下是电路测试信号 ============
+function IVI_DISPLAY_EN_SleepMode_Check()
+{
+    //#########5.24 IVI_DISPLAY_EN 信号测试#########
+    // 5s 内可测得使能电压即可通过测试 ON OFF
+    //~ SetTestName ="CDCU_IVI_DISPLAY_EN_Check";
+    SetTestName ("IVI_DISPLAY_EN_SleepMode_Check");
+    $measureName="J018_P40_IVI_DISPLAY_EN_Vol";
+    $lowerLimit= 0;
+    $upperLimit=0.1;
+    $Rang= "100";
+    $Channel= "216";
+    $DMM= "DMM1";
+    //~ $DAQ6510_Handle = $DAQ6510_1_Handle;
+    $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+    //~ $g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+    //~ SleepMilliseconds(1000);
+    call  Keysight6510_MeasureVoltage();
+    RecordMeasurementWithLimits($measureName,$DMMRead_Vol,"V",true,$lowerLimit,$upperLimit,true);
+    return;
+}
+
+function ICM_DISPLAY_EN_SleepMode_Check()
+{
+    //#########5.25 ICM_DISPLAY_EN 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    SetTestName ("ICM_DISPLAY_EN_SleepMode_Check");
+    $MeasurementName ="CDCU_ICM_DISPLAY_EN_Check";
+    $lowerLimit=0 ;
+    $upperLimit=0.1;
+    $Rang= "100";
+    $Channel= "217";
+    $DMM= "DMM1";
+    //~ $DAQ6510_Handle = $DAQ6510_1_Handle;
+    $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+    //~ $g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+    //~ SleepMilliseconds(1000);
+    call  Keysight6510_MeasureVoltage();
+    RecordMeasurementWithLimits($measureName,$DMMRead_Vol,"V",true,$lowerLimit,$upperLimit,true);
+    return;
+}
+
+
+
+
+function IVI_DISPLAY_EN_WorkMode_Check()
+{
+    //#########5.24 IVI_DISPLAY_EN 信号测试#########
+    // 5s 内可测得使能电压即可通过测试 ON OFF
+    //~ SetTestName ="CDCU_IVI_DISPLAY_EN_Check";
+    SetTestName ("IVI_DISPLAY_EN_WorkMode_Check");
+    $measureName="JT018_PIN39_ICM_Vol";
+    $lowerLimit= 11.5;
+    $upperLimit=14.5;
+    $Rang= "100";
+    $Channel= "216";
+    $DMM= "DMM1";
+    //~ $DAQ6510_Handle = $DAQ6510_1_Handle;
+    $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+    //~ $g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+    //~ SleepMilliseconds(1000);
+    call  Keysight6510_MeasureVoltage();
+    RecordMeasurementWithLimits($measureName,$DMMRead_Vol,"V",true,$lowerLimit,$upperLimit,true);
+    return;
+}
+
+function ICM_DISPLAY_EN_WorkMode_Check()
+{
+    //#########5.25 ICM_DISPLAY_EN 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    SetTestName ("ICM_DISPLAY_EN_WorkMode_Check");
+    $measureName ="JT018_PIN39_ICM_Vol";
+    $lowerLimit= 11.5;
+    $upperLimit=14.5;
+    $Rang= "100";
+    $Channel= "217";
+    $DMM= "DMM1";
+    //~ $DAQ6510_Handle = $DAQ6510_1_Handle;
+    $g_DAQ6510_Handle = CopyVariable($DAQ6510_1_Handle);
+    //~ $g_DAQ6510_Handle = CopyVariable($DAQ6510_2_Handle);
+    //~ SleepMilliseconds(1000);
+    call  Keysight6510_MeasureVoltage();
+    RecordMeasurementWithLimits($measureName,$DMMRead_Vol,"V",true,$lowerLimit,$upperLimit,true);
+    return;
+
+    return;
+}
+
+
+function CDCU_MCU_B+_ALARM_Check()
+{
+    //#########5.26 MCU_B+_ALARM 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+  
+    $canID = "0x721";
+   $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+      
+	$CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+	$CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+	$MeasurementName = "CDCU_MCU_B+_ALARM_Check";
+	call ZLG_CAN_Send();//send CAN msg
+	$loop=0;
+	$result=false;
+	SleepMilliseconds(20);
+	call ZLG_CAN_Rev();
+      //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+      
+	$CAN_Send_Msg = "21 03 09 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+	//~ $MeasurementName = "Android_EOLTestModel_Enter21";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+      
+      $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter22";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+     
+      $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter23";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+      $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter24";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+      $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter25";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+      
+      $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter26";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+      
+      $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter27";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+      $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter28";
+	
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(1000);//间隔时间建议1000ms
+	call ZLG_CAN_Rev();//receive CAN msg
+	
+	$Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+	if($Frame_Rev_result_result==false)
+      {
+	$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	  UpdateStatus( $CAN_Rev_Msg);
+	  $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	  UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01 ";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  return;
+}
+
+function CDCU_WLP_Alarm_Check()
+{
+ SetTestName("CDCU_WLP_Alarm_Check");
+  //Relay connect JT108  PIN26 to 3.3v
+  IviVISA_Write($IT6322B_handle, "*CLS\n");
+  SleepMilliseconds(100);
+  IviVISA_Write($IT6322B_handle, "APPLy CH2,3.3,0.2\n");
+  SleepMilliseconds(100);
+  IviVISA_Write($IT6322B_handle, "OUTP ON\n");
+  //Relay connect JT108  PIN26 to 3.3v
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line3",1,$Fix_Control_Task);
+  SleepMilliseconds(2000);
+    //~ OperatorInputPrompt ("Test");
+  call CDCU_WLP_Alarm_High();
+
+    //Relay connect  JT108  PIN26 to GND
+   IviVISA_Write($IT6322B_handle, "OUTP OFF\n");
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line3",0,$Fix_Control_Task);
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line4",1,$Fix_Control_Task);
+    SleepMilliseconds(2000);
+  call CDCU_WLP_Alarm_Low();
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line3",0,$Fix_Control_Task);
+  NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line4",0,$Fix_Control_Task);
+  
+  return;
+  }
+
+function CDCU_WLP_Alarm_High()
+{
+    //#########5.26 MCU_B+_ALARM 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    $canID = "0x721";
+     $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==true && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+  {
+    $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+    $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+    $MeasurementName = "CDCU_WLP_Alarm_High";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    call ZLG_CAN_Rev();
+  //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+  
+    $CAN_Send_Msg = "21 05 06 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+    //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+ 
+  $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+  
+  $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+  $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+    
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(1000);//间隔时间建议1000ms
+    
+    call ZLG_CAN_Rev();//receive CAN msg
+    $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+	if($Frame_Rev_result_result==false)
+      {
+	$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+    
+	  UpdateStatus( $CAN_Rev_Msg);
+	  $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	  UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  return;
+}
+
+function CDCU_WLP_Alarm_Low()
+{
+    //#########5.26 MCU_B+_ALARM 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    $canID = "0x721";
+  
+  
+     $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+      $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+      $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+      $MeasurementName = "CDCU_WLP_Alarm_Low";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(100);
+      call ZLG_CAN_Rev();
+    
+    //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+    
+      $CAN_Send_Msg = "21 05 06 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+      //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+   
+    $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+      
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(2000);//间隔时间建议1000ms
+      
+      call ZLG_CAN_Rev();//receive CAN msg
+
+      $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+
+      if($Frame_Rev_result_result==false)
+      {
+      $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	UpdateStatus( $CAN_Rev_Msg);
+	$CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01 00";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  return;
+}
+
+function CDCU_BLP_Alarm_Check()
+{
+    //Relay connect JT108  PIN26 to 3.3v
+    SetTestName("CDCU_BLP_Alarm_Check");
+    //Relay connect JT108  PIN26 to 3.3v
+    IviVISA_Write($IT6322B_handle, "*CLS\n");
+    SleepMilliseconds(100);
+    IviVISA_Write($IT6322B_handle, "APPLy CH2,3.3,0.2\n");
+    SleepMilliseconds(100);
+    IviVISA_Write($IT6322B_handle, "OUTP ON\n");
+    //Relay connect JT108  PIN26 to 3.3v
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line5",1,$Fix_Control_Task);
+    SleepMilliseconds(2000);
+    //~ OperatorInputPrompt ("Test");
+    call CDCU_BLP_Alarm_High();
+
+    //Relay connect  JT108  PIN26 to GND
+    IviVISA_Write($IT6322B_handle, "OUTP OFF\n");
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line5",0,$Fix_Control_Task);
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line6",1,$Fix_Control_Task);
+    SleepMilliseconds(2000);
+    call CDCU_BLP_Alarm_Low();
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line5",0,$Fix_Control_Task);
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName,"port6","line6",0,$Fix_Control_Task);
+    return;
+  
+  }
+
+function CDCU_BLP_Alarm_High()
+{
+    //#########5.26 MCU_B+_ALARM 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    $canID = "0x721";
+    
+    $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+	$CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+	$CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+	$MeasurementName = "CDCU_BLP_Alarm_High";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(100);
+	call ZLG_CAN_Rev();
+      
+      //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+      
+	$CAN_Send_Msg = "21 06 0B 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+	//~ $MeasurementName = "Android_EOLTestModel_Enter21";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+      
+      $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter22";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+     
+      $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter23";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+      $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter24";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+      $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter25";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+      
+      $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter26";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+      
+      $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter27";
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+      $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+	//~ $MeasurementName = "Android_EOLTestModel_Enter28";
+	
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(1000);//间隔时间建议1000ms
+	
+	call ZLG_CAN_Rev();//receive CAN msg
+      $Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+
+      if($Frame_Rev_result_result==false)
+      {
+      $Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	UpdateStatus( $CAN_Rev_Msg);
+	$CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  return;
+}
+
+function CDCU_BLP_Alarm_Low()
+{
+    //#########5.26 MCU_B+_ALARM 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    $canID = "0x721";
+       $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+  
+      $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+      $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+      $MeasurementName = "CDCU_BLP_Alarm_Low";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(100);
+      call ZLG_CAN_Rev();
+    
+    //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+    
+      $CAN_Send_Msg = "21 06 0B 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+      //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+   
+    $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+      
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(2000);//间隔时间建议1000ms
+      
+      call ZLG_CAN_Rev();//receive CAN msg
+      	$Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+	if($Frame_Rev_result_result==false)
+      {
+	$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	UpdateStatus( $CAN_Rev_Msg);
+	$CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 03 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01 00";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  return;
+}
+
+function IGON_MCU_ON_Check()
+{
+    //#########5.26 MCU_B+_ALARM 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    SetTestName("5.28 IGON_MCU 信号测试");
+    $canID = "0x721";
+       $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, "port0", "line3", 1, $TaskName); 
+    SleepMilliseconds(500);
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+  
+      $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+      $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+      $MeasurementName = "IGON_MCU_ON_Check";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(100);
+      call ZLG_CAN_Rev();
+    
+    //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+    
+      $CAN_Send_Msg = "21 06 03 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+      //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+   
+    $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+      
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(500);//间隔时间建议1000ms
+      
+      call ZLG_CAN_Rev();//receive CAN msg
+      	$Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+	if($Frame_Rev_result_result==false)
+      {
+	$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	UpdateStatus( $CAN_Rev_Msg);
+	$CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 01 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  return;
+}
+
+function IGON_MCU_OFF_Check()
+{
+    //#########5.26 MCU_B+_ALARM 信号测试#########
+  // 5s 内可测得使能电压即可通过测试ON OFF
+    $canID = "0x721";
+       $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+     NI_DAQmx_Write_Dig_Port_Line($DeviceName, "port0", "line3", 0, $TaskName); 
+       SleepMilliseconds(500);
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+  
+      $CAN_Send_Msg = "10 3E 31 01 C1 00 02 01";
+      $CAN_Rev_ExpMsg = "71 01 C1 00";	//安卓系统启动时间约 30s， 此指令需在安卓系统完成启动后方可响应
+      $MeasurementName = "IGON_MCU_OFF_Check";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(100);
+      call ZLG_CAN_Rev();
+    
+    //===============================连续发======>>>>>>>>>>>>>>>>>>>>>>>>>>
+    
+      $CAN_Send_Msg = "21 06 03 00 00 00 00 00";	//必须要在startRoutine后50ms之内发
+      //~ $MeasurementName = "Android_EOLTestModel_Enter21";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter22";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+   
+    $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter23";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter24";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter25";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter26";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+    
+    $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter27";
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(20);
+
+    $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+      //~ $MeasurementName = "Android_EOLTestModel_Enter28";
+      
+      call ZLG_CAN_Send();//send CAN msg
+      SleepMilliseconds(2000);//间隔时间建议1000ms
+      
+      call ZLG_CAN_Rev();//receive CAN msg
+      	$Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+	
+	if($Frame_Rev_result_result==false)
+      {
+	$Frame_Rev_result_Loop=$Frame_Rev_result_Loop+1;
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	UpdateStatus( $CAN_Rev_Msg);
+	$CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04 ", "AA");
+	UpdateStatus( $CAN_Rev_Msg);
+      }
+    }
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    $CAN_Send_Msg = "04 31 01 C1 00 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C1 00 04 02 01";	//71 03And->MCU->tester.含义:10多帧预警3E长度7103对应3103
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(50);
+
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev(); //receive CAN msg
+    
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6);
+    $CAN_Rev_Msg = StringCat($Str1,$Str2);
+    UpdateStatus( "======================");
+    UpdateStatus( $CAN_Rev_Msg);
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  return;
+}
+
+//============以上是电路测试信号 ============
+
+function CDCU_TEMP_APL_Read()
+{
+    //##########核心板电源管理温度检测###########
+    $MeasurementName = "CDCU_TEMP_APL_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = true;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 05";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 05";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+    
+function CDCU_TEMP_APL_Read1()
+{
+    //##########读取功放温度读取检测###########
+    $canID = "0x721";
+
+    $MeasurementName = "CDCU_TEMP_APL_Read";
+  
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 05";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 05";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+  
+    call Send103E3101_RecExt7103();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+
+
+  
+  return;
+}
+
+
+
+function CDCU_TEMP_Core_Read()
+{
+    //##########核心板电源管理温度检测###########
+    $MeasurementName = "CDCU_TEMP_Core_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = false;
+    $DataLimit = true;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 06";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 06";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+    //~ $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+function CDCU_TEMP_Core_Read1()
+{
+    //##########核心板电源管理温度检测###########
+    $canID = "0x721";
+
+    $MeasurementName = "CDCU_TEMP_Core_Read";
+  
+
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 06";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 06";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+  
+    call Send103E3101_RecExt7103();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+
+
+  return;
+}
+
+function CDCU_TEMP_SOC_Read()
+{
+    //##########核心板电源管理温度检测###########
+    $canID = "0x721";
+  
+    $MeasurementName = "CDCU_TEMP_SOC_Read";
+  
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 07";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 07";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+  
+    call Send103E3101_RecExt7103();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+
+  
+  return;
+}
+
+
+function CDCU_TEMP_UFS_Read()
+{
+    //##########核心板电源管理温度检测###########
+    $canID = "0x721";
+
+      $MeasurementName = "CDCU_TEMP_UFS_Read";
+  
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 08";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 08";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+  
+    call Send103E3101_RecExt7103();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+
+ 
+  return;
+}
+
+
+
+
+
+
+function CDCU_TEMP_DDR_Read()
+{
+    //##########核心板电源管理温度检测###########
+    $canID = "0x721";
+  
+     $MeasurementName = "CDCU_TEMP_DDR_Read";
+  
+   //SETTING:
+  
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+  
+  //INPUT:
+   $StartRoutine3101 = "10 3E 31 01 C0 0A 01 09";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 09";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+
+ 
+  return;
+}
+
+function CDCU_TEMP_DDR_Read1()//del
+{
+    //##########核心板电源管理温度检测###########
+    $canID = "0x721";
+
+   $MeasurementName = "CDCU_TEMP_DDR_Read";
+  
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 09";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 09";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+  
+    call Send103E3101_RecExt7103();
+
+    $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+
+ 
+  return;
+}
+
+function CDCU_TEMP_AMCU_Read()//need to be confirmed
+{
+    //##########核心板电源管理温度检测###########
+    $MeasurementName = "CDCU_TEMP_AMCU_Read";
+  
+   //SETTING:
+    $canID = "0x721";
+    $DownLoadRetry = 3;
+    $DownLoadTIme=0;//1000;
+    $WaitTImeBeforeRec=0;//200;
+    $Status = true;
+    $DataLimit = false;
+    
+  //INPUT:
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 0F";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 0F";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+    $ExtMsg ="ON";
+  
+  //OUTPUT:
+    //~ $Str_Ext21_28
+  
+    call Send103E3101_RecExt7103_Final();
+
+    //~ $Str_Ext21_28 = HexStringToString($Str_Ext21_28, " ");
+    $Str_Ext21_28 = StringCut($Str_Ext21_28, "",6);
+    //~ UpdateStatus($Str_Ext21_28);
+     //~ OperatorPrompt("","");
+    if ($Status)
+    {
+    $Result = StringContains($Str_Ext21_28,$ExtMsg);
+    $MeasurementName = $MeasurementName +"->Status";
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+    }
+    
+    if ($DataLimit)
+    {
+    $Str_Ext21_28 = StringToFloat($Str_Ext21_28);
+    $MeasurementName = $MeasurementName +"->Data";
+    RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    }
+ 
+  return;
+}
+
+
+function CDCU_TEMP_AMCU_Read1()
+{
+    //##########核心板电源管理温度检测###########
+    $canID = "0x721";
+
+   $MeasurementName = "CDCU_TEMP_AMCU_Read";
+  
+    $StartRoutine3101 = "10 3E 31 01 C0 0A 01 0F";
+    $MCURes7101 = "71 01 C0 0A";	
+    $RequestRoutineResult3103 = "04 31 03 C0 0A 00 00 00";
+    $ANDRes7103 =  "71 03 C0 0A 04 01 0F";	//sample: 71 03 C0 02 04 01 00
+    $Send3000014 = "30 00 14 00 00 00 00 00";
+    $CurrentLowerLimit = 20;
+    $CurrentUpperLimit = 55;
+  
+    call Send103E3101_RecExt7103();
+    $Str_Ext21_28 = StringSub($Str_Ext21_28,0,5);
+    //~ $Str_Ext21_28 = HexStringToInteger($Str_Ext21_28);
+    //~ RecordMeasurementWithLimits( $MeasurementName,$Str_Ext21_28,"℃","TRUE",$CurrentLowerLimit,$CurrentUpperLimit,"TRUE");
+    $Result = StringContains($Str_Ext21_28,"??");
+    RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+  
+  return;
+}
+
+
+function CDCU_TEMP_Check()
+{
+    //##########检查模拟信号输入温度采集电路检测的功能###########
+  $Names = "5.5_Temp_Test";
+  SetTestName($Names);
+  UpdateStatus($Names);
+  
+  call CDCU_TEMP_APL_Read();
+  SleepMilliseconds(200);//wait for next CAN
+  call CDCU_TEMP_Core_Read();
+  SleepMilliseconds(200);
+  call CDCU_TEMP_SOC_Read();
+  SleepMilliseconds(200);
+  call CDCU_TEMP_UFS_Read();
+  SleepMilliseconds(200);
+  call CDCU_TEMP_DDR_Read();
+  SleepMilliseconds(200);
+  //~ call CDCU_TEMP_AMCU_Read();
+  //~ SleepMilliseconds(200);
+  
+  return;
+}
+
+
+function CDCU_PingNet()//Loop is not working
+{
+    //##########连接 XP-AUTO 无线路由###########
+   $canID = "0x721";
+  
+    $IPPingRes = false;
+    $Loop = 0;
+    while($Loop < 5 && !$IPPingRes)
+    {
+      
+    $CAN_Send_Msg = "10 3E 31 01 C0 09 02 02"; //31 01 C0 09 02 02 chNO. xx10 xx11 xx12 xx13 xx20 xx21 xx22 xx23 .....
+    $CAN_Rev_ExpMsg = "71 01 C0 09";	
+   
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    //~ call ZLG_CAN_Rev();
+     //~ $IP = "AC 14 01 20";
+  
+    //~ $CAN_Send_Msg = "21 01 AC 14 01 20 00 00";//ip address
+    $CAN_Send_Msg = "21 01 "+ $IP +" 00 00";//ip address
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "22 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "23 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "24 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "25 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "26 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "27 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+    $CAN_Send_Msg = "28 00 00 00 00 00 00 00";
+    call ZLG_CAN_Send();//send CAN msg
+
+    SleepMilliseconds(1000);//间隔时间建议1000ms
+    //~ call ZLG_CAN_Rev();
+
+    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  //==================================请求结果=====================
+  
+  //requestRoutineResult
+    
+    $CAN_Send_Msg = "04 31 03 C0 09 00 00 00";
+    $CAN_Rev_ExpMsg = "71 03 C0 09 04 02";	//71 03 C0 09 04 02 02 <status1.2.3...>
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(100);
+ 
+  $CAN_Send_Msg = "30 00 14 00 00 00 00 00";		//多帧接收
+    //~ $CAN_Rev_ExpMsg = "XPENGF30";	//最后一个帧是28开头
+  
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev();
+    
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    
+  $IPPingRes = $Result;
+  $Loop = $Loop + 1;
+      if(!$IPPingRes)
+	{
+	    SleepMilliseconds(200);
+	}
+  }
+  $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+  $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 6); 
+  $CAN_Rev_Msg = $Str1 +$Str2;
+  
+    $CAN_Rev_ExpMsg = "71 03 C0 09 04 02 02 02";	//71 03 C0 09 04 02 02 <Result> Result(1 个字节):1, 0x01: Running; 2, 0x02: Pass; 3, 0x03: Fail
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+ 
+  
+  return;
+}
+  
+  
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>TEST FUNCTIONS begin <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+function Send103E3101_NoParse()
+{
+    //==================================开始通讯=====================
+//StarRoutine
+    $CAN_Send_Msg = $StartRoutine3101; // "10 3E 31 01 C0 01 01 01"
+    $CAN_Rev_ExpMsg = $MCURes7101;	
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    call CAN_21-28Frame_Send();
+    SleepMilliseconds(1000);//间隔时间建议1000ms
+    //~ call ZLG_CAN_Rev();
+
+  
+    //~ $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04", "AA");
+    //~ $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg);
+    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  //==================================请求结果=====================
+  //RequestRoutineResult
+    $CAN_Send_Msg = $RequestRoutineResult3103; //"04 31 03 C0 05 00 00 00";
+    $CAN_Rev_ExpMsg = $ANDRes7103;	//"71 03 C0 05 04 02 00";	
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();
+    SleepMilliseconds(50);
+    call ZLG_CAN_Rev();
+
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $CAN_Send_Msg = $Send3000014;	//"30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev();
+
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 3);//正反馈有1个字节在21帧。
+    $CAN_Rev_Msg = StringCat($Str1,$Str2)
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  return;
+}
+
+function Send103E3101_RecSingle7103()
+{
+    //==================================开始通讯=====================
+//StarRoutine
+    $CAN_Send_Msg = $StartRoutine3101; // "10 3E 31 01 C0 01 01 01"
+    $CAN_Rev_ExpMsg = $MCURes7101;	
+    call ZLG_CAN_Send();//send CAN msg
+    SleepMilliseconds(20);
+
+    call CAN_21-28Frame_Send();
+    SleepMilliseconds(1000);//间隔时间建议1000ms
+    call ZLG_CAN_Rev();
+
+  
+    $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04", "AA");
+    $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg);
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  //==================================请求结果=====================
+  //RequestRoutineResult
+    $CAN_Send_Msg = $RequestRoutineResult3103; //"04 31 03 C0 05 00 00 00";
+    $CAN_Rev_ExpMsg = $ANDRes7103;	//"71 03 C0 05 04 02 00";	
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();
+    SleepMilliseconds(50);
+    call ZLG_CAN_Rev();
+
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $CAN_Send_Msg = $Send3000014;	//"30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev();
+
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 3);//正反馈有1个字节在21帧。
+    $CAN_Rev_Msg = StringCat($Str1,$Str2)
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+  return;
+}
+
+
+function Send103E3101_RecExt7103()
+{
+    //发送21到28的多帧,也返回21到28的多帧.然后处理输出.
+  
+  //==================================开始通讯=====================
+//StarRoutine
+    
+    $Frame_Rev_result_Loop=0;
+    $Frame_Rev_result_times= 5;  //强制loop次数
+    $Frame_Rev_result_result=false;
+
+    while($Frame_Rev_result_result==false && $Frame_Rev_result_Loop < $Frame_Rev_result_times)
+    {
+	$CAN_Send_Msg = $StartRoutine3101; // "10 3E 31 01 C0 01 01 01"
+	$CAN_Rev_ExpMsg = $MCURes7101;	
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+	call CAN_21-28Frame_Send();
+	SleepMilliseconds(1000);//间隔时间建议1000ms
+	call ZLG_CAN_Rev();
+	$Frame_Rev_result_result =  StringContains($CAN_Rev_Msg,"ID:07A1,data:04");//检查是否收到预期值
+      if($Frame_Rev_result_result==false)
+      {
+	  $Frame_Rev_result_Loop =  $Frame_Rev_result_Loop+1;
+	
+      }
+      if($Frame_Rev_result_result==true)
+      {
+	    $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04", "AA");
+	  $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg);
+	  $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+      }
+      
+    }
+
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+  
+  //==================================请求结果=====================
+  //RequestRoutineResult
+    $CAN_Send_Msg = $RequestRoutineResult3103; //"04 31 03 C0 05 00 00 00";
+    $CAN_Rev_ExpMsg = $ANDRes7103;	//"71 03 C0 05 04 02 00";	
+    $MeasurementName = $MeasurementName +"->Request";
+    call ZLG_CAN_Send();
+    SleepMilliseconds(50);
+    call ZLG_CAN_Rev();
+
+    $Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+    $CAN_Send_Msg = $Send3000014;	//"30 00 14 00 00 00 00 00";		//多帧接收
+    call ZLG_CAN_Send();
+    SleepMilliseconds(200);
+    call ZLG_CAN_Rev();
+    
+    $Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 3);//正反馈有1个字节在21帧。
+    $Str20 = StringCat($Str1,$Str2);//结果的第一帧
+    $Result = StringContains($Str20,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $Str20, "Bool", true, $Result);
+  
+    $Str0 = StringCat("ID:07A1,data:21 ", $Str2);//更新:利用变量决定21后面一位的值.
+    $Str21 = StringParse($CAN_Rev_Msg, $Str0, ";");//StringCut($CAN_Rev_Msg, $Str0, 19);//切21帧
+    $Str22 = StringParse($CAN_Rev_Msg, "ID:07A1,data:22 ", ";");//切22帧
+    $Str23 = StringParse($CAN_Rev_Msg, "ID:07A1,data:23 ", ";");
+    $Str24 = StringParse($CAN_Rev_Msg, "ID:07A1,data:24 ", ";");
+    $Str25 = StringParse($CAN_Rev_Msg, "ID:07A1,data:25 ", ";");
+    $Str26 = StringParse($CAN_Rev_Msg, "ID:07A1,data:26 ", ";");
+    $Str27 = StringParse($CAN_Rev_Msg, "ID:07A1,data:27 ", ";");
+    $Str28 = StringParse($CAN_Rev_Msg, "ID:07A1,data:28 ", ";");
+    
+    $Str_Ext21_28 = $Str21+$Str22+$Str23+$Str24+$Str25+$Str26+$Str27+$Str28;
+    UpdateStatus($Str_Ext21_28);
+    //$Str_Ext21_28作为一个数据输出,后续处理
+    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    //~ $MeasurementName = $MeasurementName +"->MultiFrame";
+    //~ RecordMeasurementPassFail($MeasurementName, $Str_Ext21_28, "Bool", true, $Result);
+
+  
+  return;
+}
+
+
+
+
+
+
+function Send103E3101_RecExt7103_Final()//updated final , add loop
+{
+    //发送21到28的多帧,也返回21到28的多帧.然后处理输出.
+  
+  //==================================开始通讯=====================
+    $Result = false;
+    while($DownLoadRetry > 0 && !$Result)
+    {
+	//~ SleepMilliseconds(200);
+	$CAN_Send_Msg = $StartRoutine3101; // "10 3E 31 01 C0 01 01 01"
+	$CAN_Rev_ExpMsg = $MCURes7101;	
+	call ZLG_CAN_Send();//send CAN msg
+	SleepMilliseconds(20);
+
+	call CAN_21-28Frame_Send();
+	SleepMilliseconds(1000);//间隔时间建议1000ms
+	SleepMilliseconds($DownLoadTIme);
+	//~ call ZLG_CAN_Rev();
+
+
+	//~ $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, "ID:07A1,data:04", "AA");
+	//~ $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg);
+	//~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+	//~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+
+	//==================================请求结果=====================
+	//RequestRoutineResult
+	$CAN_Send_Msg = $RequestRoutineResult3103; //"04 31 03 C0 05 00 00 00";
+	$CAN_Rev_ExpMsg = $ANDRes7103;	//"71 03 C0 05 04 02 00";	
+	$MeasurementName = $MeasurementName +"->Request";
+	call ZLG_CAN_Send();
+	SleepMilliseconds(100);
+	call ZLG_CAN_Rev();
+
+	$PosRes = StringContains($CAN_Rev_Msg,"07A1,data:10 3E");
+	if(!$PosRes)
+	{
+	  
+	  $DownLoadRetry = $DownLoadRetry - 1;
+	  $CAN_Rev_Msg="ID:07A1,data:10 3E  NULL;"; 
+	  continue;
+	}
+	
+	$Str1 = StringParse($CAN_Rev_Msg, "ID:07A1,data:10 3E ", ";");
+	$CAN_Send_Msg = $Send3000014;	//"30 00 14 00 00 00 00 00";		//多帧接收
+	call ZLG_CAN_Send();
+	SleepMilliseconds(200);
+	SleepMilliseconds($WaitTImeBeforeRec);
+	call ZLG_CAN_Rev();
+	$Result = StringContains($CAN_Rev_Msg,"ID:07A1,data:21");
+	$Str2 = StringCut($CAN_Rev_Msg, "ID:07A1,data:21 ", 3);//正反馈有1个字节在21帧。
+	$Str20 = StringCat($Str1,$Str2);//Total结果的第一帧
+	$Result = StringContains($Str20,$CAN_Rev_ExpMsg);
+
+	UpdateStatus( $CAN_Send_Msg);
+	UpdateStatus( $Str20);
+	UpdateStatus( $CAN_Rev_ExpMsg);
+	UpdateStatus( $DownLoadRetry);
+	UpdateStatus( $Result);
+	$Rt = ($DownLoadRetry > 0);
+	UpdateStatus( $Rt);
+	//~ OperatorPrompt("","");
+
+	$DownLoadRetry = $DownLoadRetry - 1;
+    }
+    RecordMeasurementPassFail($MeasurementName, $Str20, "Bool", true, $Result);
+
+    $Str0 = StringCat("ID:07A1,data:21 ", $Str2);//更新:利用变量决定21后面一位的值.
+    $Str21 = StringParse($CAN_Rev_Msg, $Str0, ";");//StringCut($CAN_Rev_Msg, $Str0, 19);//切21帧
+    $Str22 = StringParse($CAN_Rev_Msg, "ID:07A1,data:22 ", ";");//切22帧
+    $Str23 = StringParse($CAN_Rev_Msg, "ID:07A1,data:23 ", ";");
+    $Str24 = StringParse($CAN_Rev_Msg, "ID:07A1,data:24 ", ";");
+    $Str25 = StringParse($CAN_Rev_Msg, "ID:07A1,data:25 ", ";");
+    $Str26 = StringParse($CAN_Rev_Msg, "ID:07A1,data:26 ", ";");
+    $Str27 = StringParse($CAN_Rev_Msg, "ID:07A1,data:27 ", ";");
+    $Str28 = StringParse($CAN_Rev_Msg, "ID:07A1,data:28 ", ";");
+    $Str_Ext21_28 = $Str21+$Str22+$Str23+$Str24+$Str25+$Str26+$Str27+$Str28;
+    UpdateStatus($Str_Ext21_28);
+    return;
+}
+  
+  
+  
+function InitIT6722()
+{
+    //打开电源1，检查通信，上电，13.5V  5A
+  $IT6722_Port = ReadIniFile($g_SysteM_Config_File,"HW_Config","IT6722A_Port ");
+  UpdateStatus($IT6722_Port);
+  $timeOut = 2000;          // Time out = 2 seconds.
+  $IT6722_handle = IviVISA_Open($IT6722_Port, $timeOut);
+
+  IviVISA_Write($IT6722_handle, "*IDN?\n");
+  SleepMilliseconds(100);
+  $Response =  IviVISA_Read($IT6722_handle);
+  UpdateStatus($Response);
+  $Result = StringContains($Response,"IT6722A");
+  if(!$Result)
+  {
+      Fail("Please Check UUT Power IT6722A #1");
+  }
+  IviVISA_Write($IT6722_handle, "*CLS\n");
+  SleepMilliseconds(100);
+  IviVISA_Write($IT6722_handle, "APPL 14.4,3.0\n");
+  SleepMilliseconds(100);
+  IviVISA_Write($IT6722_handle, "OUTP ON\n");
+  SleepMilliseconds(100);
+}
+
+function InitIT6322B()
+{
+    //打开电源1，检查通信，上电，13.5V  5A
+  $IT6322B_Port = ReadIniFile($g_SysteM_Config_File,"HW_Config","IT6322B_Port");
+  UpdateStatus($IT6322B_Port);
+  $timeOut = 2000;          // Time out = 2 seconds.
+  $IT6322B_handle = IviVISA_Open($IT6322B_Port, $timeOut);
+
+  IviVISA_Write($IT6322B_handle, "*IDN?\n");
+  SleepMilliseconds(100);
+  $Response =  IviVISA_Read($IT6322B_handle);
+  UpdateStatus($Response);
+  $Result = StringContains($Response,"6322");
+  if(!$Result)
+  {
+      Fail("Please Check UUT Power IT6322B #1");
+  }
+  IviVISA_Write($IT6322B_handle, "*CLS\n");
+  SleepMilliseconds(100);
+}
+
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>DAQ6500-1<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+function InitDM6510()
+{
+      UpdateStatus("===================Init DM6510=====================");
+      //~ $DAQ6510_Port = ReadIniFile($g_SysteM_Config_File,"HW_Config","DAQ6510_1_Port");
+      UpdateStatus($DAQ6510_Port);
+      $timeOut = 2000;          // Time out = 2 seconds.
+      $g_DAQ6510_Handle = IviVISA_Open($DAQ6510_Port,$timeOut);
+      IviVISA_Write($g_DAQ6510_Handle, "*IDN?\r\n");
+      $DMM6500_ReturnString = IviVISA_Read($g_DAQ6510_Handle);
+      UpdateStatus($DMM6500_ReturnString);
+      IviVISA_Write($g_DAQ6510_Handle, "*RST\r\n");
+      SleepMilliseconds(50);
+      IviVISA_Write($g_DAQ6510_Handle, "*CLS");
+      SleepMilliseconds(50);
+      $g_DAQ6510_Read = ":READ?\r\n";
+      UpdateStatus($g_DAQ6510_Handle);
+      UpdateStatus("===================End Init DM6500=====================");
+      return;
+}
+//---------------------------------------------------------------------------------------------------------------------
+function CloseDM6510()
+{
+      UpdateStatus("====== CloseDM6500 =========");
+      IviVISA_Close($g_DAQ6510_Handle);
+      UpdateStatus("======= End CloseDM6500 =====");
+      return;
+}
+//Output : $DCVoltage
+function Keysight6510_MeasureCurrent()
+{
+  UpdateStatus("----------------------------- Keysight6510_MeasureCurrent ------------------------------");
+  //SENS:FUNC 'CURR:DC', (@121)\r\n
+  $Set_Current_Meas = "SENS:FUNC 'CURR:DC', (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Set_Current_Meas); 
+  
+  $Set_Current_Range = $Curr_Range + $Channel + ")\r\n";
+  UpdateStatus($Set_Current_Range);
+  IviVISA_Write($g_DAQ6510_Handle,$Set_Current_Range); 
+  //ROUT:CLOS (@113)\r\n
+  $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+  //SENS:VOLT:RANG 100, (@113)\r\n
+  //~ $Rang = "10";
+  //~ $DAQ6510_VOLT_RANG = "SENS:VOLT:RANG " +$Rang + ", (@" + $Channel + ")\r\n";
+  //~ NIVISA_Write($g_DMM6500_Handle,$DAQ6510_VOLT_RANG); 
+  
+  $Meas_flag = false;
+  $Meas_loop = 0;
+  $g_DAQ6510_Read = ":READ?\r\n";
+  while(!$Meas_flag && $Meas_loop < 5)
+  {
+      IviVISA_Write($g_DAQ6510_Handle,":READ?\r\n"); 
+      $DMMRead_Curr = IviVISA_Read($g_DAQ6510_Handle);
+      //~ $DMMRead_Curr = Round($DMMRead_Curr,3);
+      UpdateStatus($DMMRead_Curr);
+      $Meas_flag =  ($DMMRead_Curr >= $lowerLimit) && ($DMMRead_Curr <= $upperLimit);
+      if(!$Meas_flag)
+      {
+	  SleepMilliseconds(200);
+      }
+      $Meas_loop = $Meas_loop + 1;
+  }
+  return; 
+}
+function Keysight6510_MeasureVoltage()
+{
+  UpdateStatus("----------------------------- Keysight_DMM_MeasureVoltage ------------------------------"); 
+  //SENS:FUNC 'VOLT', (@113)\r\n
+  $Set_Voltage_Meas = "SENS:FUNC 'VOLT', (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Set_Voltage_Meas); 
+  //ROUT:CLOS (@113)\r\n
+  $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+  //SENS:VOLT:RANG 100, (@113)\r\n
+  //~ $Rang = "10";
+  $DAQ6510_VOLT_RANG = "SENS:VOLT:RANG " +$Rang + ", (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$DAQ6510_VOLT_RANG); 
+  
+  $Meas_flag = false;
+  $Meas_loop = 0;
+  while(!$Meas_flag && $Meas_loop < 3)
+  {
+      IviVISA_Write($g_DAQ6510_Handle,$g_DAQ6510_Read); 
+      $DMMRead_Vol = IviVISA_Read($g_DAQ6510_Handle);
+      //~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+      UpdateStatus($DMMRead_Vol);
+      $Meas_flag =  ($DMMRead_Vol >= $lowerLimit) && ($DMMRead_Vol <= $upperLimit);
+      if(!$Meas_flag)
+      {
+	  SleepMilliseconds(300);
+      }
+      $Meas_loop = $Meas_loop + 1;
+  }
+  return; 
+}
+function Keysight6510_MeasureResistance()
+{
+  UpdateStatus("----------------------------- Keysight6510_MeasureResistance ------------------------------"); 
+  //SENS:FUNC 'VOLT', (@113)\r\n
+  $Set_Resistance_Meas = "SENS:FUNC 'RES', (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Set_Resistance_Meas); 
+  //ROUT:CLOS (@113)\r\n
+  $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+  //SENS:VOLT:RANG 100, (@113)\r\n
+  //~ $Rang = "10";
+  $DAQ6510_RES_RANG = "SENS:RES:RANG " +$Res_Range + ", (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$DAQ6510_RES_RANG); 
+  
+  $Meas_flag = false;
+  $Meas_loop = 0;
+  //~ $g_DAQ6510_Read = ":READ?\r\n";
+  while(!$Meas_flag && $Meas_loop < 1)
+  {
+      IviVISA_Write($g_DAQ6510_Handle,":READ?\r\n"); 
+      $DMMRead_Res = IviVISA_Read($g_DAQ6510_Handle);
+      //~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+      UpdateStatus($DMMRead_Res);
+      $Meas_flag =  ($DMMRead_Res >= $lowerLimit) && ($DMMRead_Res <= $upperLimit);
+      if(!$Meas_flag)
+      {
+	  SleepMilliseconds(300);
+      }
+      $Meas_loop = $Meas_loop + 1;
+  }
+  $Open_Channel = "ROUT:OPEN (@" + $Channel + ")\r\n";
+  IviVISA_Write($g_DAQ6510_Handle,$Open_Channel); 
+  return; 
+}
+
+
+
+
+
+function FT8206A_Initialize()
+{
+  UpdateStatus("Initialize FT SilverX DAQ Devices");
+  
+  //DAQ initialization and return all device IDs of Finetoolng SilverX Serials products
+  //初始化所有FT820X设备，并返回所有设备的id
+  $FT_DAQ_ID_Array = FT_DAQ_SilverX_Initialize();
+  UpdateStatus($FT_DAQ_ID_Array);
+   $FT_DAQ_IDs = "13399-3616-FT202301V867";
+  //The All FT DAQs are controlled with its device ID. In this way, user will be easy to control several DAQs in one computer
+  $FT_DAQ_IDs = "13399-3616-FT202301V867";
+  //call Verify_DAQ_HW_Ready();
+  //~ $FT_DAQ_ID = Array1DGetValue($FT_DAQ_ID_Array, 1);
+  UpdateStatus($FT_DAQ_IDs);
+  UpdateStatus("initialize end");
+}
+
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>连接器控制>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+//~ //---------Load_Left_ConnecterConfig---------
+function Load_Left_ConnecterConfig()
+{
+  //---------InSensor---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Ge tLeft_Connecter config InSensor ~~~~~~~~~~~~~~");
+  $Left_InSensor=ReadIniFile($Fixconfig,"Left_Connecter", "InSensor");
+  $Left_InSensor = StringSplitToArray($Left_InSensor,"-",2);
+  $Left_InSensorPort = Array1DGetValue($Left_InSensor,0);
+  $Left_InSensorLine = Array1DGetValue($Left_InSensor,1);
+  //---------OutSensor---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get tLeft_Connecter config OutSensor ~~~~~~~~~~~~~~");
+  $Left_OutSensor=ReadIniFile($Fixconfig,"Left_Connecter", "OutSensor");
+  $Left_OutSensor = StringSplitToArray($Left_OutSensor,"-",2);
+  $Left_OutSensorPort = Array1DGetValue($Left_OutSensor,0);
+  $Left_OutSensorLine = Array1DGetValue($Left_OutSensor,1);
+    //---------In_cylinder---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get Left_Connecter config In_cylinder ~~~~~~~~~~~~~~");
+  $Left_In_cylinder =ReadIniFile($Fixconfig,"Left_Connecter", "In_cylinder");
+  $Left_In_cylinder = StringSplitToArray($Left_In_cylinder,"-",2);
+  $Left_In_cylinderPort = Array1DGetValue($Left_In_cylinder,0);
+  $Left_In_cylinderLine = Array1DGetValue($Left_In_cylinder,1);
+  
+    //---------Out_cylinder---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get Left_Connecter config Out_cylinder ~~~~~~~~~~~~~~");
+  $Left_Out_cylinder =ReadIniFile($Fixconfig,"Left_Connecter", "Out_cylinder");
+  $Left_Out_cylinder = StringSplitToArray($Left_Out_cylinder,"-",2);
+  $Left_Out_cylinderPort = Array1DGetValue($Left_Out_cylinder,0);
+  $Left_Out_cylinderLine = Array1DGetValue($Left_Out_cylinder,1);
+  return;
+}
+
+
+//~ ~~~~~~~~~~~ Sub_Left_Connecter_Into~~~~~~~~~~~~~~~
+function Sub_Left_Connecter_Into()
+{
+      UpdateStatus("~~~~~~~~~~~~~~~Sub_Left_Connecter_Into!!~~~~~~~~~~~~~~~");
+
+	//~ OperatorPrompt("Sub_Left_Connecter_Into", "OK");
+       
+      $Loop_Flag =true;
+      $Loop=0;
+      $result=false;
+      while($Loop_Flag ==true && $Loop<=10)
+      {
+	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Left_Out_cylinderPort,$Left_Out_cylinderLine,0,$Fix_Control_Task);
+	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Left_In_cylinderPort,$Left_In_cylinderLine,1,$Fix_Control_Task);
+	SleepMilliseconds(200);
+	$IsFixIn = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$Left_InSensorPort,$Left_InSensorLine,$Fix_Control_Task);
+	$IsFixOut=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$Left_OutSensorPort,$Left_OutSensorLine,$Fix_Control_Task);  
+	if($IsFixIn==0 && $IsFixOut==1)
+	{
+	  	  $Loop_Flag= false;
+		  $result=true;
+		  UpdateStatus("Fix Left Connecter into Done!!");
+		  //~ $g_Fix_is_into =true;
+	}
+	$Loop = $Loop+1;
+	SleepMilliseconds(500); 
+      }
+      if($result==false)
+      {
+	Fail("Please check Left Connecter In Out Cylinder&Sensor!!");
+      }
+       return;
+  }
+
+
+ //~ ~~~~~~~~~~~ Sub_Left_Connecter_out~~~~~~~~~~~~~~~
+function Sub_Left_Connecter_out()
+{
+    UpdateStatus("~~~~~~~~~~~~~~~Set Sub_Left_Connecter_out!!~~~~~~~~~~~~~~~");
+    $Loop_Flag =true;
+    $Loop=0;
+    $result=false;
+    while($Loop_Flag ==true && $Loop<=10)
+    {
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Left_Out_cylinderPort,$Left_Out_cylinderLine,1,$Fix_Control_Task);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Left_In_cylinderPort,$Left_In_cylinderLine,0,$Fix_Control_Task);
+      SleepMilliseconds(200);
+      $IsFixIn = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$Left_InSensorPort,$Left_InSensorLine,$Fix_Control_Task);
+      $IsFixOut=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$Left_OutSensorPort,$Left_OutSensorLine,$Fix_Control_Task);  
+      if($IsFixIn==1 && $IsFixOut==0)
+      {
+		$Loop_Flag= false;
+		$result=true;
+		UpdateStatus("Fix Sub_Left_Connecter_out Done!!");
+		$g_Fix_is_Out =true;
+      }
+      $Loop = $Loop+1;
+      SleepMilliseconds(500); 
+    }
+    if($result==false)
+    {
+      Fail("Please check Left_Connecter In Out Cylinder&Sensor!!");
+    }
+      return;
+} 
+
+
+

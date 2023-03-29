@@ -1,23 +1,20 @@
 ﻿
-$RIGOL_DG5072_VISA="USB0::0x1AB1::0x0640::DG5T250800024::INSTR";
-call RIGOL_DG5072_Initialize();
+//~ $RIGOL_DG5072_VISA="USB0::0x1AB1::0x0640::DG5T250800024::INSTR";
+//~ call RIGOL_DG5072_Initialize();
+//~ $Generate_Signal_Freq=100;		//设置频率，以HZ为单位
+//~ $Generate_Signal_Amp=4.2;		//设置幅值，以Vpp为单位
+//~ $Generate_Signal_DCYCle=25;		//设置占空比，10Mhz下占空比范围20~80
+//~ call RIGOL_DG5072_Channel1_Output();
+//~ OperatorPrompt("OK","");
+//~ call RIGOL_DG5072_Channel1_OutOff();
+//~ call RIGOL_DG5072_Close();
+//~ End;
 
 
-$Generate_Signal_Freq=100;		//设置频率，以HZ为单位
-$Generate_Signal_Amp=4.2;		//设置幅值，以Vpp为单位
-$Generate_Signal_DCYCle=25;		//设置占空比，10Mhz下占空比范围20~80
-call RIGOL_DG5072_Channel1_Output();
-
-OperatorPrompt("OK","");
-
-call RIGOL_DG5072_Channel1_OutOff();
-
-call RIGOL_DG5072_Close();
-
-End;
 
 function RIGOL_DG5072_Initialize()								//Initial Instruments
 {
+    $RIGOL_DG5072_VISA = ReadIniFile($g_System_Config_File,"HW_Config","DG5072_Port");
     UpdateStatus("......RIGOL_DG5072_Initialize");
     $RIGOL_DG5072_Handle = NIVISA_Open($RIGOL_DG5072_VISA);		//连接仪器
     NIVISA_SetTimeout($RIGOL_DG5072_Handle, 2000);				// 设置延时
