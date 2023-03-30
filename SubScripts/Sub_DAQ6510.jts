@@ -85,7 +85,6 @@ function Keysight6510_MeasureCurrent()
 
 function Keysight6510_MeasureDCVoltage()
 {
-  
     //input:
 	  //1,$g_DAQ6510_Handle
 	  //2,$Channel

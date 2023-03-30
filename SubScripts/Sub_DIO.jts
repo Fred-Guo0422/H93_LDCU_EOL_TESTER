@@ -1,122 +1,4 @@
-
-function Read_Analog_INPUT_By_PIN()
-{
-    SetTestName("Analog_INPUT");
-
-    $worksheet = 3; //shell AI
-    $startcolumn = "A";
-    $startRow = 2;
-    $endColumn = "S";
-    $endRow = 42;
-    //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4_0327.xlsx";
-    call LoadExcelConfigFile(); //return array ()
-    //~ call SUB_Read_Analog_INPUT();
-    $rows_Loop=0;
-      while($rows_Loop < $rows_Length)
-    {
-	// Loading Config info
-	$rowArray 					= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
-
-	$AI_PIN					=Array1DGetValue($rowArray ,0);
-	$AI_Function				=Array1DGetValue($rowArray ,1);
-	$AI_Singal_Type				=Array1DGetValue($rowArray ,2);
-	$remark					=Array1DGetValue($rowArray ,3);
-	$AI_LoadInfo				=Array1DGetValue($rowArray ,4);
-	$AI_StartBit				=Array1DGetValue($rowArray ,5);
-	$AI_DUT_CMD				=Array1DGetValue($rowArray ,6);
-	$AI_LoadboxCMD_State0		=Array1DGetValue($rowArray ,7);
-	$AI_BoardNO_relay_State1		=Array1DGetValue($rowArray ,8);
-	$AI_LoadBoxCMD_Sate1		=Array1DGetValue($rowArray ,9);
-	$AI_State1_LSL				=Array1DGetValue($rowArray ,10);
-	$AI_State1_USL				=Array1DGetValue($rowArray ,11);
-	$AI_BoardNO_relay_State2		=Array1DGetValue($rowArray ,12);
-	$AI_LoadBoxCMD_Sate2		=Array1DGetValue($rowArray ,13);
-	$AI_State2_LSL				=Array1DGetValue($rowArray ,14);
-	$AI_Sate2_USL				=Array1DGetValue($rowArray ,15);
-	$AI_Unit					=Array1DGetValue($rowArray ,16);
-	$TestEnable				=Array1DGetValue($rowArray ,17);
-	$ParallelTest				=Array1DGetValue($rowArray ,18);
-	//~ OperatorPrompt("Test", "OK");
-
-	//Show Pin info
-	$TemMsg="\n~~~~~~~~"+$AI_PIN+"_"+$AI_Function+"_State1 Start Test~~~~~~~~\n";
-	UpdateStatus($TemMsg);
-	//show test item to Debug view
-	$TempMsg= "$AI_PIN="+$AI_PIN+"\n"+"$AI_StartBit="+$AI_StartBit+"\n"+"$AI_Function="+$AI_Function+"\n"+"$AI_LoadBoxCMD_Sate1="+$AI_LoadBoxCMD_Sate1+"\n"+"$AI_State1_LSL="+$AI_State1_LSL+"\n"+"$AI_State1_USL="+$AI_State1_USL+"\n"+"$AI_BoardNO_relay_State1="+$AI_BoardNO_relay_State1+"\n";
-	UpdateStatus($TempMsg);
-	//检查本步骤是否测试，若不测试将直接return，
-	
-	$AI_TestEnable = NumericComparison($TestEnable, 1, "==");
-	$Temp = "AI_TestEnable="+$AI_TestEnable;
-	UpdateStatus($Temp);
-	 
-	if(!$AI_TestEnable)
-	{
-	  $TemMsg=$AI_PIN+"_"+$AI_Function+"_State1 Test Disabled";
-	  UpdateStatus($TemMsg);
-	  $TemMsg=$AI_PIN+"_"+$AI_Function+"_State1 End Test\n";
-	  UpdateStatus($TemMsg);
-	  $rows_Loop=$rows_Loop+1;
-	  //~ OperatorPrompt($Temp, "OK");
-	  continue;
-	}
-	
-	//Check for parallel testing
-	$ParallelTest = NumericComparison($ParallelTest, 1, "==");
-	$Temp = "ParallelTest="+$ParallelTest;
-	UpdateStatus($Temp);
-	// 如果不是并行测试项目，将再次却换继电器然后读取AI Data，反之直接读取之前的AI状态
-	if(!$ParallelTest)
-	{
-	  //call set load box to state1
-	  //delay 200ms
-	  //read AI state
-	  //~ OperatorPrompt($Temp, "OK");
-	  SleepMilliseconds(100);
-	  call SUB_Read_Analog_INPUT();  // out Pararm $AI_Binary_String
-	}
-	
-	// get bit data from  $AI_Binary_String
-	$AI_Start_Byte	=  $AI_StartBit/8;
-	$TempMag= "AI_Start_Byte="+$AI_Start_Byte;
-	UpdateStatus($TempMag);
-	//~ UpdateStatus($AI_Start_Byte);l
-	$AI_End_Byte	=Add($AI_Start_Byte,1);
-	
-	$TempMag= "AI_End_Byte="+$AI_End_Byte;
-	UpdateStatus($TempMag);
-	//~ UpdateStatus($AI_End_Byte);l
-	$AI_Start_Byte = Array1DGetValue($CAN_Rev_Msg_array,$AI_Start_Byte);
-	$AI_End_Byte = Array1DGetValue($CAN_Rev_Msg_array,$AI_End_Byte);
-	
-	//~ $Pin_AI_Vol = $AI_End_Byte+$AI_Start_Byte;
-	$Pin_AI_Vol = $AI_Start_Byte+$AI_End_Byte;
-	$TempMag= "Pin_AI_Vol_HEX="+$Pin_AI_Vol;
-	UpdateStatus($TempMag);
-	
-	$Pin_AI_Vol  = HexStringToInteger($Pin_AI_Vol);
-	
-	$TempMag= "Pin_AI_Vol="+"_"+$AI_Function+$Pin_AI_Vol;
-	UpdateStatus($TempMag);
-    
-	$Pin_AI_Vol = $Pin_AI_Vol*0.0012; //比率
-
-	// set MeasuName
-	$MeasuName = $AI_PIN+"_State1_Vol";
-	// check Readult 
-	RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $AI_State1_LSL, $AI_State1_USL, true);
-	
-	$rows_Loop=$rows_Loop+1;
-    
-    }
-    return;
-}
-
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Digital_IO INPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//通过循环测试每个DI
-//读取所有的Di状态,Read_Digital_IO_By_PIN 将调用这个function
-// 这个function 将返回一个64bit字符串 变量($Digital_Rev_Binary_String),每个bit代表一个DI的状态,
-
 function DI_Load_Reset()
 {
     // 断开所有负载箱DI负载
@@ -126,9 +8,10 @@ function DI_Load_Reset()
     $result = SerialSendMilliseconds($g_LoadBox_Handle,"8MSET0000000000000000$","OK",500);
      $result="LoadBox board addr 8: "+$result;
     UpdateStatus($result);
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"8MSET0000000000000000$","OK",500);
+    $result = SerialSendMilliseconds($g_LoadBox_Handle,"BMSET0000000000000000$","OK",500);
     $result="LoadBox board addr 8: "+$result;
     UpdateStatus($result);
+    return;
 }
 function SUB_Read_Digital_Input()
 {
@@ -200,8 +83,11 @@ function SUB_Read_Digital_Input()
 
 function Read_Digital_IO_By_PIN()
 {
-      SetTestName("Digital-IN");
+    //通过循环测试每个DI
+    //读取所有的Di状态,Read_Digital_IO_By_PIN 将调用这个function
+    // 这个function 将返回一个64bit字符串 变量($Digital_Rev_Binary_String),每个bit代表一个DI的状态,
   
+      SetTestName("Digital-IN");
       $worksheet = 2; //shell DI
       $startcolumn = "A";
       $startRow = 2;
@@ -341,10 +227,33 @@ function Read_Digital_IO_By_PIN()
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Digital OUTPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+function DO_Load_Reset()
+{
+    $result = SerialSendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
+    if($result!=true)
+    {
+      SetFailFunction("DO_Load_Reset");
+    }
+    $result="LoadBox board addr 6: "+$result+"\r\n";
+    UpdateStatus($result);
+    $result="DO load reset done!"+"\r\n";
 
+    return;
+}
+
+function DUT_ALL_DO_Off()
+{
+    $CAN_Send_Msg="00 10 31 01 C0 81 00 00 00 00 00 00 00 00 00 00 00 00 CC CC"; 
+    $CAN_Rev_ExpMsg = "04 71 01 C0 81";
+    call ZLG_CANFD_Send();//send can msg
+    SleepMilliseconds(100);
+    call ZLG_CANFD_Rev();
+    UpdateStatus($CAN_Rev_Msg);
+    return;
+}
 function Set_Digital_OutPut()
 {
-    UpdateStatus(" ~~~Set_Digital_OUTPUT_Start\r\n");
+   UpdateStatus("~~~ DO Test Start ~~~\r\n");
     SetTestName("Digital-OUT");
     // load config files
     $worksheet = 6; //shell DO
@@ -352,21 +261,16 @@ function Set_Digital_OutPut()
     $startRow = 2;
     $endColumn = "P";
     $endRow = 55;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
     //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
-  
     call LoadExcelConfigFile(); //return array ()
     if( $g_Testdebug)
     {
       OperatorPrompt("测试前关闭所有DO输出done", "OK");
     }
-    //测试前关闭所有DO输出
-    //~ $CAN_Send_Msg="00 10 31 01 C0 81 00 00 00 00 00 00 00 00 00 00 00 00 CC CC"; 
-    //~ $CAN_Rev_ExpMsg = "04 71 01 C0 81";
-    //~ call ZLG_CANFD_Send();//send can msg
-    //~ SleepMilliseconds(100);
-    //~ call ZLG_CANFD_Rev();
-    //~ UpdateStatus($CAN_Rev_Msg);
-
+    call DUT_ALL_DO_Off();	//~ //测试前关闭所有DO输出
+    call DO_Load_Reset(); 	//~ //测试前关闭所有DO Loadbox SW
    // 开始循环测试
     $rows_Loop =0;
     while($rows_Length>$rows_Loop )
@@ -377,28 +281,24 @@ function Set_Digital_OutPut()
 	$DO_Funtion		=Array1DGetValue($rowArray ,1);
 	$DO_SingalType		=Array1DGetValue($rowArray ,2);
 	$DO_Remark		=Array1DGetValue($rowArray ,3);
-      
       	$StartBit			=Array1DGetValue($rowArray ,5);
 	$DUT_CMD			=Array1DGetValue($rowArray ,6);
 	$LoadBox_CMD		=Array1DGetValue($rowArray ,7);
 	$DMM_CH			=Array1DGetValue($rowArray ,8);
-	
-	$DO_On_LSL		=Array1DGetValue($rowArray ,10);
-	$DO_On_USL		=Array1DGetValue($rowArray ,11);
-	$DO_Off_LSL		=Array1DGetValue($rowArray ,12);
-	$DO_Off_USL		=Array1DGetValue($rowArray ,13);  
-    
-    	$DO_TestEnable		=Array1DGetValue($rowArray ,14);
-	$DO_ParallelTest		=Array1DGetValue($rowArray ,15);  
-      
-      	$TempMsg= "StartBit="+$StartBit+"\n"+"DUT_CMD="+$DUT_CMD+"\n"+"LoadBox_CMD="+$LoadBox_CMD+"\n"+"DMM_CH="+$DMM_CH+"\n"+"DO_On_LSL="+$DO_On_LSL+"\n"+"DO_On_USL="+$DO_On_USL+"\n"+"DO_Off_LSL="+$DO_Off_LSL+"\n"+"DO_Off_USL="+$DO_Off_USL+"\n";
-	UpdateStatus($TempMsg);	
+	$DO_On_LSL		=Array1DGetValue($rowArray ,9);
+	$DO_On_USL		=Array1DGetValue($rowArray ,10);
+	$DO_Off_LSL		=Array1DGetValue($rowArray ,11);
+	$DO_Off_USL		=Array1DGetValue($rowArray ,12);  
+    	$DO_TestEnable		=Array1DGetValue($rowArray ,13);
+	$DO_ParallelTest		=Array1DGetValue($rowArray ,14);  
+      	// show row info
+      	$TempMsg= "DO_PIN="+$DO_PIN+"\r\n"+"DO_Funtion="+$DO_Funtion+"\r\n"+ "DO_SingalType="+$DO_SingalType+"\r\n"+ "DO_Remark="+$DO_Remark+"\r\n"+"StartBit="+$StartBit+"\r\n"+ "DUT_CMD="+$DUT_CMD+"\r\n"+ "LoadBox_CMD="+$LoadBox_CMD+"\r\n"+"DMM_CH="+$DMM_CH+"\r\n"+ "DO_On_LSL="+$DO_On_LSL+"\r\n"+ "DO_On_USL="+$DO_On_USL+"\r\n"+"DO_Off_LSL="+$DO_Off_LSL+"\r\n"+"DO_Off_USL="+$DO_Off_USL+"\r\n"+ "TestEnable="+$TestEnable+"\r\n"+"ParallelTest="+$ParallelTest+"\r\n";
+	UpdateStatus($TempMsg);
 	
 	//检查当前步骤是否测试这个步骤
 	$DO_TestEnable = NumericComparison($DO_TestEnable, 1, "==");
 	$Temp = "ParallelTest="+$DO_TestEnable;
 	UpdateStatus($Temp);
-	
 	if($DO_TestEnable==false)
 	{
 	  $TemMsg=$DO_PIN+"_"+$DO_Funtion+"_Test Disabled\n";
@@ -409,105 +309,118 @@ function Set_Digital_OutPut()
 	  //~ OperatorPrompt($Temp, "OK");
 	  continue;
 	}
-	//~ OperatorPrompt($DI_PIN, "OK");
+	
+	//~~~~~~~~~~~~~~~~~~DO On test~~~~~~~~~~~~~~~~~~~~~~
+	//Set test Name
+	$MeasName = $DO_PIN+"_DO-On";
+	// show TestName
+	$TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
+	UpdateStatus($TempMsg);
+	// Generate DUT Command
+	$CAN_Send_Msg ="00 10 31 01 C0 81 "+$DUT_CMD+" CC CC";
+	$CAN_Rev_ExpMsg = "04 71 01 C0 81";
+	$TempMsg = "DO-Command = "+$CAN_Send_Msg+"\n";
+	UpdateStatus($TempMsg);
+	
 	//Check for parallel testing
 	$DO_ParallelTest = NumericComparison($DO_ParallelTest, 1, "==");
 	$Temp = "ParallelTest="+$DO_ParallelTest;
 	UpdateStatus($Temp);
-	
 	if($DO_ParallelTest==false)  //检查是否并行测试，如果不是并行测试将执行切换继电器和发送DO CMD
 	{
-	 
 	  //~ // call Load box SW 加载负载
 	  $LoadBox_CMD=StringTrim($LoadBox_CMD);
 	  if($LoadBox_CMD !="NA") // 如果是NA说明是直连负载不通过开关
 	  {
 	    $result = SerialSendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
-	    $result="LoadBox Set State2: "+$LoadBox_CMD+" "+$result;
+	    $result = StringTrim($result);
+	    $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
 	    UpdateStatus($result);
 	    SleepMilliseconds(5);
 	  }
 	}
-
-	//~~~~~~~~~~~~~~~~~~Set DO On~~~~~~~~~~~~~~~~~~~~~~
-	//Set test Name
-	$MeasName = $DO_PIN+"_DO-On";
-	$CAN_Send_Msg ="00 10 31 01 C0 81 "+$DUT_CMD+" CC CC";
-	$CAN_Rev_ExpMsg = "04 71 01 C0 81";
-	$TempMsg = "DOcommand="+$CAN_Send_Msg+"\n";
-	UpdateStatus($TempMsg);
-	
-	// show row info
-	$TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
-	UpdateStatus($TempMsg);
-	
-	call ZLG_CANFD_Send();//send can msg
+	//send can msg
+	call ZLG_CANFD_Send();
 	UpdateStatus($CAN_Send_Msg);
 	SleepMilliseconds(200);
 	call ZLG_CANFD_Rev();
 	UpdateStatus($CAN_Rev_Msg);
-	
-	//$CAN_Rev_Msg = StringLookup("ID:07A1,data",$CAN_Rev_Msg);
+	// Check CAN Result
 	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
 	RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
 	SleepMilliseconds(10);
-	
 	OperatorPrompt($DO_PIN, "OK");
-	//~ // call test Vol
 	
-	
-	//add end test msg
+	//~ // call DMM test Vol
+	//input:
+	$Channel = CopyVariable($DMM_CH);
+	$Rang="20";
+	//Output:
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage();
+	//check Test limit
+	$measureName=$MeasName+"_Vol";
+	RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
 	
 	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
 	UpdateStatus($TempMsg);
-	SleepMilliseconds(200);
-	//~~~~~~~~~~~~~~~~~~Set DO Off~~~~~~~~~~~~~~~~~~~~~~
-	
+
+	//~~~~~~~~~~~~~~~~~~DO Off test~~~~~~~~~~~~~~~~~~~~~~
 	//Set test Name
 	$MeasName = $DO_PIN+"_DO-OFF";
-	$CAN_Send_Msg="00 10 31 01 C0 81 00 00 00 00 00 00 00 00 00 00 00 00 CC CC"; 
-	$CAN_Rev_ExpMsg = "04 71 01 C0 81";
 	$TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
 	UpdateStatus($TempMsg);
-	// show row info
-	call ZLG_CANFD_Send();//send can msg
-	UpdateStatus($CAN_Send_Msg);
-	SleepMilliseconds(200);
-	call ZLG_CANFD_Rev();
-	UpdateStatus($CAN_Rev_Msg);
-	//$CAN_Rev_Msg = StringLookup("ID:07A1,data",$CAN_Rev_Msg);
+	//Reset DO OUT
+	call DUT_ALL_DO_Off();	//~ //测试前关闭所有DO输出
+	// Check CAN Send Result
 	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
 	RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
-	SleepMilliseconds(10);
 	
-	//~ // call Load box SW
+	//~ // call Load box SW,释放万用表开关。
+	call DO_Load_Reset(); 	
+	$result="LoadBox Set DO "+$DO_PIN +"Off CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
+	UpdateStatus($result);
+	SleepMilliseconds(5);
 	
-	//~ // call test Vol
-	
+	//~ // call DMM test Vol
+	//input:
+	$Channel = CopyVariable($DMM_CH);
+	$Rang="20";
+	//Output:
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage();
+	//check Test limit
+	$measureName=$MeasName+"_Vol";
+	RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
 	//add end test msg
 	
 	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
 	UpdateStatus($TempMsg);
 	$rows_Loop=$rows_Loop+1;
   }
-    UpdateStatus("~~~ Set_Digital_OUTPUT_END\r\n");
+    UpdateStatus("~~~ DO Test END ~~~\r\n");
     return;
 }
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PWM INPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//通过循环测试每个DI
-function Read_PWM_IN_By_PIN()
+function Read_PWM_IN_By_PIN_25()
 {
-    SetTestName("PWM_INPUT");
+    SetTestName("PWM_INPUT_25%");
     $worksheet = 5; //shell PWM_IN
     $startcolumn = "A";
     $startRow = 3;
     $endColumn = "T";
     $endRow = 17;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
     //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
     call LoadExcelConfigFile();
-
+    call PWMIN_Load_Reset(); 			// PWM IN 负载板初始化
+    $Generate_Signal_Freq 	= 100;			//产生的信号频率，以Hz为单位
+    $Generate_Signal_Amp	=4.2			//产生的信号赋值，以VPP为单位
+    $Generate_Signal_DCYCle	=25;			//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+    call RIGOL_DG5072_Channel1_Output();	// call 产生PWM 信号
     $rows_Loop=0;
     while($rows_Loop < $rows_Length)
     {
@@ -519,40 +432,36 @@ function Read_PWM_IN_By_PIN()
 	$PWMIN_Remark					=Array1DGetValue($rowArray ,3);
 	$PWMIN_DUT_Command			=Array1DGetValue($rowArray ,6);
 	$PWMIN_LoadBoxCommand			=Array1DGetValue($rowArray ,7);
-      
 	$Freq_Start_bit					=Array1DGetValue($rowArray ,8);
 	$Duty_Start_bit					=Array1DGetValue($rowArray ,9);
-      
 	// LOAD LIMIT Start1(25%)
 	$State1_Freq_LSL				=Array1DGetValue($rowArray ,10);
 	$State1_Freq_USL				=Array1DGetValue($rowArray ,11);
 	$State1_Duty_LSL				=Array1DGetValue($rowArray ,12);
 	$State1_Duty_USL				=Array1DGetValue($rowArray ,13);
-      
        // LOAD LIMIT Start2 (75%)
 	$State2_Freq_LSL				=Array1DGetValue($rowArray ,14);
 	$State2_Freq_USL				=Array1DGetValue($rowArray ,15);
 	$State2_Duty_LSL				=Array1DGetValue($rowArray ,16);
 	$State2_Duty_USL				=Array1DGetValue($rowArray ,17);
-	
  	$TestEnable					=Array1DGetValue($rowArray ,18);
 	$ParallelTest					=Array1DGetValue($rowArray ,19);      
 	//Show Pin info
-	 $TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" Start~~~~~~~\n";
+	 $TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 25% Start~~~~~~~\n";
 	 UpdateStatus($TempMsg);
 	 
 	 //~~~~~~~~~~~~~Test Duty 25%~~~~~~~~~~~~
-	 
-	 // 设置信号发生器 (State1——25%)
-	 
 	 // 设置loadbox 通道
-      
-	
-	// read all PWM in IO data from MCU
-	// output param (PWM_INPUT_Data_array)
+	$result = SerialSendMilliseconds($g_LoadBox_Handle,$PWMIN_LoadBoxCommand,"OK",500);
+	$result="LoadBox Board set: "+$PWMIN_PIN+"PWM IN CH :"+$result+"\r\n";
+	UpdateStatus($result);
+	// Call get DUT PWM Data
+	SleepMilliseconds(100);
 	call SUB_Read_PWM_INPUT();  
        
-	//Get Freq Data
+	//~~~~~~~~~Get Freq Data~~~~~~~~~
+	
+	 //开始bit 除以8 得到开始的byte，开始byte +1 得到结束byte
 	$PWM_Freq_Start_Byte	= Divide($Freq_Start_bit,8);
 	$TempMag= "PWM_Freq_Start_Byte="+$PWM_Freq_Start_Byte;
 	UpdateStatus($TempMag);
@@ -560,18 +469,18 @@ function Read_PWM_IN_By_PIN()
 	$PWM_Freq_End_Byte	=Add($PWM_Freq_Start_Byte,1);
 	$TempMag= "PWM_Freq_End_Byte="+$PWM_Freq_End_Byte;
 	UpdateStatus($TempMag);
-	
+	//通过开始和结束byte得到frequency
 	$PWM_Freq_Start_Byte = Array1DGetValue($PWM_INPUT_Data_array,$PWM_Freq_Start_Byte);
 	$PWM_Freq_End_Byte =($PWM_INPUT_Data_array,$PWM_Freq_End_Byte);
 	$PWM_Freq =$PWM_Freq_End_Byte+$PWM_Freq_Start_Byte;
 	UpdateStatus($PWM_Freq);
 	
 	$PWM_Freq = HexStringToInteger($PWM_Freq);
-	$MeasuName =$PWMIN_PIN+"_("+$PWMIN_Funtion+")(Freq_State1_25%)";
-	//Result for Freq
+	$MeasuName =$PWMIN_PIN+"_Freq_25%)";
+	//check Result for Freq
 	RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "Hz", true, $State1_Freq_LSL, $State1_Freq_USL, true);
 	
-	// Get duty date
+	//~~~~~~~~~Get duty date~~~~~~~~~
 	$PWM_Duty_Start_Byte =  Divide($Duty_Start_bit,8);
 	$TempMag= "PWM_Duty_Start_Byte="+$PWM_Duty_Start_Byte;
 	UpdateStatus($TempMag);
@@ -587,47 +496,15 @@ function Read_PWM_IN_By_PIN()
 	UpdateStatus($PWM_Duty);
 	
 	$PWM_Duty = HexStringToInteger($PWM_Duty);
-	$MeasuName =$PWMIN_PIN+"_("+$PWMIN_Funtion+")(Duty_State1_25%)";
-	//Result for Duty
+	$PWM_Duty = $PWM_Duty*0.1; //乘以转换比率
+	$MeasuName =$PWMIN_PIN+"_Duty_25%)";
+	//Check Result for Duty
 	RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "%", true, $State1_Duty_LSL, $State1_Duty_USL, true);
-
+	call PWMIN_Load_Reset(); // PWM IN 负载板初始化
 	$rows_Loop=$rows_Loop+1;
     }
     return;
 }
-
-
-
-  
-//SUB Function
-function LoadExcelConfigFile()
-{
-      UpdateStatus("~~~~~~Load Execel File~~~~");
-  //INPUT-PARAM:
-  
-    //~ $worksheet = 2; //shell DI
-    //~ $startcolumn = "A";
-    //~ $startRow = 2;
-    //~ $endColumn = "M";
-    //~ $endRow = 42;
-    //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
-  
-  //OUTPUT-PARAM:
-    //~ $columns_Length
-    //~ $rows_Length
-    //~ $shell_Data_array
-      $excelHandle = ExcelOpenFile($g_Config_excelFile);
-      $shell_Data_array = ExcelGetRange($excelHandle, $worksheet, $startcolumn, $startRow, $endColumn, $endRow); 
-      ExcelCloseFile($excelHandle);
-      $dataArray_len= ArrayGetLength($shell_Data_array);
-      //~ UpdateStatus($dataArray_len);
-      $rows_Length = ArrayGetDimensionSize($shell_Data_array, 0); 
-      $columns_Length = ArrayGetDimensionSize($shell_Data_array, 1);  
-      UpdateStatus($rows_Length);
-      UpdateStatus($columns_Length);
-      return;
-}
-
 
 function SUB_Read_PWM_INPUT()
 {
@@ -693,6 +570,54 @@ function SUB_Read_PWM_INPUT()
     UpdateStatus("=>>>>>>>>>>>>>>>>>> Read_PWM_INPUT_END>>>>>>>>>>>>>>>\r\n");
     return;
  }
+
+
+
+ function PWMIN_Load_Reset()
+{
+    $result = SerialSendMilliseconds($g_LoadBox_Handle,"AMSET0000000000000000$","OK",500);
+    if($result!=true)
+    {
+      SetFailFunction("DO_Load_Reset");
+    }
+    $result="LoadBox board addr A: "+$result+"\r\n";
+    UpdateStatus($result);
+    $result="DO load reset done!"+"\r\n";
+
+    return;
+}
+ 
+ //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PWM INPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ //SUB Function
+function LoadExcelConfigFile()
+{
+      UpdateStatus("~~~~~~Load Execel File~~~~");
+  //INPUT-PARAM:
+  
+    //~ $worksheet = 2; //shell DI
+    //~ $startcolumn = "A";
+    //~ $startRow = 2;
+    //~ $endColumn = "M";
+    //~ $endRow = 42;
+    //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+  
+  //OUTPUT-PARAM:
+    //~ $columns_Length
+    //~ $rows_Length
+    //~ $shell_Data_array
+      $excelHandle = ExcelOpenFile($g_Config_excelFile);
+      $shell_Data_array = ExcelGetRange($excelHandle, $worksheet, $startcolumn, $startRow, $endColumn, $endRow); 
+      ExcelCloseFile($excelHandle);
+      $dataArray_len= ArrayGetLength($shell_Data_array);
+      //~ UpdateStatus($dataArray_len);
+      $rows_Length = ArrayGetDimensionSize($shell_Data_array, 0); 
+      $columns_Length = ArrayGetDimensionSize($shell_Data_array, 1);  
+      UpdateStatus($rows_Length);
+      UpdateStatus($columns_Length);
+      return;
+}
+
+
 
 function SUB_Read_Analog_INPUT()
 {
@@ -848,6 +773,119 @@ function SET_PWM_OUT()
     $rows_Loop=$rows_Loop+1;
   }
   return;
+}
+
+function Read_Analog_INPUT_By_PIN()
+{
+    SetTestName("Analog_INPUT");
+
+    $worksheet = 3; //shell AI
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "S";
+    $endRow = 42;
+    //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4_0327.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    //~ call SUB_Read_Analog_INPUT();
+    $rows_Loop=0;
+      while($rows_Loop < $rows_Length)
+    {
+	// Loading Config info
+	$rowArray 					= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+
+	$AI_PIN					=Array1DGetValue($rowArray ,0);
+	$AI_Function				=Array1DGetValue($rowArray ,1);
+	$AI_Singal_Type				=Array1DGetValue($rowArray ,2);
+	$remark					=Array1DGetValue($rowArray ,3);
+	$AI_LoadInfo				=Array1DGetValue($rowArray ,4);
+	$AI_StartBit				=Array1DGetValue($rowArray ,5);
+	$AI_DUT_CMD				=Array1DGetValue($rowArray ,6);
+	$AI_LoadboxCMD_State0		=Array1DGetValue($rowArray ,7);
+	$AI_BoardNO_relay_State1		=Array1DGetValue($rowArray ,8);
+	$AI_LoadBoxCMD_Sate1		=Array1DGetValue($rowArray ,9);
+	$AI_State1_LSL				=Array1DGetValue($rowArray ,10);
+	$AI_State1_USL				=Array1DGetValue($rowArray ,11);
+	$AI_BoardNO_relay_State2		=Array1DGetValue($rowArray ,12);
+	$AI_LoadBoxCMD_Sate2		=Array1DGetValue($rowArray ,13);
+	$AI_State2_LSL				=Array1DGetValue($rowArray ,14);
+	$AI_Sate2_USL				=Array1DGetValue($rowArray ,15);
+	$AI_Unit					=Array1DGetValue($rowArray ,16);
+	$TestEnable				=Array1DGetValue($rowArray ,17);
+	$ParallelTest				=Array1DGetValue($rowArray ,18);
+	//~ OperatorPrompt("Test", "OK");
+
+	//Show Pin info
+	$TemMsg="\n~~~~~~~~"+$AI_PIN+"_"+$AI_Function+"_State1 Start Test~~~~~~~~\n";
+	UpdateStatus($TemMsg);
+	//show test item to Debug view
+	$TempMsg= "$AI_PIN="+$AI_PIN+"\n"+"$AI_StartBit="+$AI_StartBit+"\n"+"$AI_Function="+$AI_Function+"\n"+"$AI_LoadBoxCMD_Sate1="+$AI_LoadBoxCMD_Sate1+"\n"+"$AI_State1_LSL="+$AI_State1_LSL+"\n"+"$AI_State1_USL="+$AI_State1_USL+"\n"+"$AI_BoardNO_relay_State1="+$AI_BoardNO_relay_State1+"\n";
+	UpdateStatus($TempMsg);
+	//检查本步骤是否测试，若不测试将直接return，
+	
+	$AI_TestEnable = NumericComparison($TestEnable, 1, "==");
+	$Temp = "AI_TestEnable="+$AI_TestEnable;
+	UpdateStatus($Temp);
+	 
+	if(!$AI_TestEnable)
+	{
+	  $TemMsg=$AI_PIN+"_"+$AI_Function+"_State1 Test Disabled";
+	  UpdateStatus($TemMsg);
+	  $TemMsg=$AI_PIN+"_"+$AI_Function+"_State1 End Test\n";
+	  UpdateStatus($TemMsg);
+	  $rows_Loop=$rows_Loop+1;
+	  //~ OperatorPrompt($Temp, "OK");
+	  continue;
+	}
+	
+	//Check for parallel testing
+	$ParallelTest = NumericComparison($ParallelTest, 1, "==");
+	$Temp = "ParallelTest="+$ParallelTest;
+	UpdateStatus($Temp);
+	// 如果不是并行测试项目，将再次却换继电器然后读取AI Data，反之直接读取之前的AI状态
+	if(!$ParallelTest)
+	{
+	  //call set load box to state1
+	  //delay 200ms
+	  //read AI state
+	  //~ OperatorPrompt($Temp, "OK");
+	  SleepMilliseconds(100);
+	  call SUB_Read_Analog_INPUT();  // out Pararm $AI_Binary_String
+	}
+	
+	// get bit data from  $AI_Binary_String
+	$AI_Start_Byte	=  $AI_StartBit/8;
+	$TempMag= "AI_Start_Byte="+$AI_Start_Byte;
+	UpdateStatus($TempMag);
+	//~ UpdateStatus($AI_Start_Byte);l
+	$AI_End_Byte	=Add($AI_Start_Byte,1);
+	
+	$TempMag= "AI_End_Byte="+$AI_End_Byte;
+	UpdateStatus($TempMag);
+	//~ UpdateStatus($AI_End_Byte);l
+	$AI_Start_Byte = Array1DGetValue($CAN_Rev_Msg_array,$AI_Start_Byte);
+	$AI_End_Byte = Array1DGetValue($CAN_Rev_Msg_array,$AI_End_Byte);
+	
+	//~ $Pin_AI_Vol = $AI_End_Byte+$AI_Start_Byte;
+	$Pin_AI_Vol = $AI_Start_Byte+$AI_End_Byte;
+	$TempMag= "Pin_AI_Vol_HEX="+$Pin_AI_Vol;
+	UpdateStatus($TempMag);
+	
+	$Pin_AI_Vol  = HexStringToInteger($Pin_AI_Vol);
+	
+	$TempMag= "Pin_AI_Vol="+"_"+$AI_Function+$Pin_AI_Vol;
+	UpdateStatus($TempMag);
+    
+	$Pin_AI_Vol = $Pin_AI_Vol*0.0012; //比率
+
+	// set MeasuName
+	$MeasuName = $AI_PIN+"_State1_Vol";
+	// check Readult 
+	RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $AI_State1_LSL, $AI_State1_USL, true);
+	
+	$rows_Loop=$rows_Loop+1;
+    
+    }
+    return;
 }
 
  
