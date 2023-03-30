@@ -19,11 +19,11 @@
 #include<"D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\RIGOL_DG5072.jts">
 
 //~ $g_Testdebug=true;  ///Global debugging flag
-SetFinalizeFunction("PostUUT");
-SetFailFunction("OnFail");
-SetAbortFunction("OnAbort");
-call PreUUT();
-//~ SleepMilliseconds(50);
+  SetFinalizeFunction("PostUUT");
+  SetFailFunction("OnFail");
+  SetAbortFunction("OnAbort");
+  call PreUUT();
+  //~ SleepMilliseconds(50);
   SetTestName("Get and Set Product Parameter");
   call into_1001();
   call into_1003();
@@ -35,13 +35,10 @@ call PreUUT();
   call Write_PCBA_SN();
   call Read_PCBA_SN();
   call write_factory_mode_Start();
-  //~ call Eeprom_write();
-  //~ call Eeprom_read();
-  //~ call EMMC_write();
-  //~ call EMMC_read();
-  
+ 
   call Read_Digital_IO_By_PIN();
-    //~ OperatorPrompt($DI_PIN, "OK");
+  call Set_Digital_OutPut();
+  //~ OperatorPrompt($DI_PIN, "OK");
   End;
   
   
@@ -143,7 +140,7 @@ function PostUUT()
   ///Release the fixture and the product will be disconnected from the power supply at PostUUT finish
   SetTestName("PostUUT");
   call DUTPowerOff();
-  call Cylinder_Initialize();//测试完成打开夹具
+  //~ call Cylinder_Initialize();//测试完成打开夹具
   
     //~ if( $g_Testdebug)
   //~ {
@@ -168,6 +165,7 @@ function PreUUT()
 }
 function AutomationLoop()
 {
+  
   End;
 }
 function LoadDUTConfig() //初始化文件配置信息
@@ -978,7 +976,7 @@ function Close_IT6722()
 
 function PowerOn_IT6722()
 {
-  IviVISA_Write($g_IT6722_handle, "APPL 14.4,10.0\n");
+  IviVISA_Write($g_IT6722_handle, "APPL 13.5,10.0\n");
   SleepMilliseconds(100);
   IviVISA_Write($g_IT6722_handle, "OUTP ON\n");
   SleepMilliseconds(100);
