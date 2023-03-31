@@ -25,16 +25,16 @@ function SUB_Read_Digital_Input()
     $loop=0;
     $Result=false;
     while($Result==false && $loop<3)
-      {
-	call ZLG_CANFD_Rev();//清空buffer
-	call ZLG_CANFD_Send();//send can msg
-	SleepMilliseconds(20);
-	call ZLG_CANFD_Rev();	
-	//// Demo Data :: ID:07E8,data:00 0C 71 03 C0 80 FF F2 EF FF FD 7F 3E 00 AA AA 
-	$CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); 
-	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
-	$loop= $loop+1;
-      }
+    {
+	  call ZLG_CANFD_Rev();//清空buffer
+	  call ZLG_CANFD_Send();//send can msg
+	  SleepMilliseconds(20);
+	  call ZLG_CANFD_Rev();	
+	  //// Demo Data :: ID:07E8,data:00 0C 71 03 C0 80 FF F2 EF FF FD 7F 3E 00 AA AA 
+	  $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); 
+	  $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+	  $loop= $loop+1;
+    }
       
     $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, $CAN_Rev_ExpMsg, "AA"); 
     $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg);
@@ -71,17 +71,15 @@ function SUB_Read_Digital_Input()
 	    $Loop = $Loop+1;
 	    SleepMilliseconds(1);		
 	}
-
 	RecordMeasurementPassFail($MeasurementName, $Digital_Rev_Binary_String, "Bool", true, $Result);
 	UpdateStatus($Digital_Rev_Binary_String);
     }
-      
     UpdateStatus("Read_Digital_input End\r\n");
     return;
-  }
+}
 
 
-function Read_Digital_IO_By_PIN()
+function Digital_IN_TEST()
 {
     //通过循环测试每个DI
     //读取所有的Di状态,Read_Digital_IO_By_PIN 将调用这个function
@@ -90,9 +88,11 @@ function Read_Digital_IO_By_PIN()
       SetTestName("Digital-IN");
       $worksheet = 2; //shell DI
       $startcolumn = "A";
-      $startRow = 2;
+      $startRow = 3;
       $endColumn = "N";
       $endRow = 42;
+      $Temp="Read excel worksheet is "+$worksheet+" \nstart column is "+$startcolumn+"\nstart Row is "+$startRow+"\nend Column is "+$endColumn+"\nend Row is "+$endRow;
+      UpdateStatus($Temp);
       //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
       call LoadExcelConfigFile(); //return array ()
       call DI_Load_Reset(); //断开所有DI 负载
@@ -230,18 +230,13 @@ function Read_Digital_IO_By_PIN()
 function DO_Load_Reset()
 {
     $result = SerialSendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
-    if($result!=true)
-    {
-      SetFailFunction("DO_Load_Reset");
-    }
     $result="LoadBox board addr 6: "+$result+"\r\n";
     UpdateStatus($result);
     $result="DO load reset done!"+"\r\n";
-
     return;
 }
 
-function DUT_ALL_DO_Off()
+function ALL_DO_Off()
 {
     $CAN_Send_Msg="00 10 31 01 C0 81 00 00 00 00 00 00 00 00 00 00 00 00 CC CC"; 
     $CAN_Rev_ExpMsg = "04 71 01 C0 81";
@@ -251,29 +246,29 @@ function DUT_ALL_DO_Off()
     UpdateStatus($CAN_Rev_Msg);
     return;
 }
-function Set_Digital_OutPut()
+function Digital_Out_TEST()
 {
-   UpdateStatus("~~~ DO Test Start ~~~\r\n");
+   UpdateStatus("~~~ DigitalOut_TEST Start ~~~\r\n");
     SetTestName("Digital-OUT");
     // load config files
     $worksheet = 6; //shell DO
     $startcolumn = "A";
     $startRow = 2;
-    $endColumn = "P";
-    $endRow = 55;
+    $endColumn = "O";
+    $endRow = 54;
     $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
     UpdateStatus($Temp);
     //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
     call LoadExcelConfigFile(); //return array ()
-    if( $g_Testdebug)
-    {
-      OperatorPrompt("测试前关闭所有DO输出done", "OK");
-    }
-    call DUT_ALL_DO_Off();	//~ //测试前关闭所有DO输出
+    //~ OperatorPrompt("测试前关闭所有DO输出done", "OK");
+    call ALL_DO_Off();	//~ //测试前关闭所有DO输出
     call DO_Load_Reset(); 	//~ //测试前关闭所有DO Loadbox SW
    // 开始循环测试
+  
     $rows_Loop =0;
-    while($rows_Length>$rows_Loop )
+    //~ OperatorPrompt("开始循环测试", "OK");
+    
+    while($rows_Loop < $rows_Length)
   {
 	// Loading Config info
 	$rowArray 			= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
@@ -285,120 +280,88 @@ function Set_Digital_OutPut()
 	$DUT_CMD			=Array1DGetValue($rowArray ,6);
 	$LoadBox_CMD		=Array1DGetValue($rowArray ,7);
 	$DMM_CH			=Array1DGetValue($rowArray ,8);
-	$DO_On_LSL		=Array1DGetValue($rowArray ,9);
-	$DO_On_USL		=Array1DGetValue($rowArray ,10);
-	$DO_Off_LSL		=Array1DGetValue($rowArray ,11);
-	$DO_Off_USL		=Array1DGetValue($rowArray ,12);  
+	$DO_Off_LSL		=Array1DGetValue($rowArray ,9);
+	$DO_Off_USL		=Array1DGetValue($rowArray ,10);
+	$DO_On_LSL		=Array1DGetValue($rowArray ,11);
+	$DO_On_USL		=Array1DGetValue($rowArray ,12);  
     	$DO_TestEnable		=Array1DGetValue($rowArray ,13);
 	$DO_ParallelTest		=Array1DGetValue($rowArray ,14);  
       	// show row info
-      	$TempMsg= "DO_PIN="+$DO_PIN+"\r\n"+"DO_Funtion="+$DO_Funtion+"\r\n"+ "DO_SingalType="+$DO_SingalType+"\r\n"+ "DO_Remark="+$DO_Remark+"\r\n"+"StartBit="+$StartBit+"\r\n"+ "DUT_CMD="+$DUT_CMD+"\r\n"+ "LoadBox_CMD="+$LoadBox_CMD+"\r\n"+"DMM_CH="+$DMM_CH+"\r\n"+ "DO_On_LSL="+$DO_On_LSL+"\r\n"+ "DO_On_USL="+$DO_On_USL+"\r\n"+"DO_Off_LSL="+$DO_Off_LSL+"\r\n"+"DO_Off_USL="+$DO_Off_USL+"\r\n"+ "TestEnable="+$TestEnable+"\r\n"+"ParallelTest="+$ParallelTest+"\r\n";
-	UpdateStatus($TempMsg);
-	
 	//检查当前步骤是否测试这个步骤
-	$DO_TestEnable = NumericComparison($DO_TestEnable, 1, "==");
-	$Temp = "ParallelTest="+$DO_TestEnable;
+	$DO_TestEnable = NumericComparison($DO_TestEnable,1, "==");
+	$Temp = "DO_PIN TestEnable="+$DO_TestEnable;
 	UpdateStatus($Temp);
-	if($DO_TestEnable==false)
+	if($DO_TestEnable== true)
 	{
-	  $TemMsg=$DO_PIN+"_"+$DO_Funtion+"_Test Disabled\n";
-	  UpdateStatus($TemMsg);
-	  $TemMsg=$DO_PIN+"_"+$DO_Funtion+"_End Test\n";
-	  UpdateStatus($TemMsg);
-	  $rows_Loop=$rows_Loop+1;
-	  //~ OperatorPrompt($Temp, "OK");
-	  continue;
-	}
-	
-	//~~~~~~~~~~~~~~~~~~DO On test~~~~~~~~~~~~~~~~~~~~~~
-	//Set test Name
-	$MeasName = $DO_PIN+"_DO-On";
-	// show TestName
-	$TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
-	UpdateStatus($TempMsg);
-	// Generate DUT Command
-	$CAN_Send_Msg ="00 10 31 01 C0 81 "+$DUT_CMD+" CC CC";
-	$CAN_Rev_ExpMsg = "04 71 01 C0 81";
-	$TempMsg = "DO-Command = "+$CAN_Send_Msg+"\n";
-	UpdateStatus($TempMsg);
-	
-	//Check for parallel testing
-	$DO_ParallelTest = NumericComparison($DO_ParallelTest, 1, "==");
-	$Temp = "ParallelTest="+$DO_ParallelTest;
-	UpdateStatus($Temp);
-	if($DO_ParallelTest==false)  //检查是否并行测试，如果不是并行测试将执行切换继电器和发送DO CMD
-	{
-	  //~ // call Load box SW 加载负载
-	  $LoadBox_CMD=StringTrim($LoadBox_CMD);
-	  if($LoadBox_CMD !="NA") // 如果是NA说明是直连负载不通过开关
+	  //~~~~~~~~~~~~~~~~~~DO On test~~~~~~~~~~~~~~~~~~~~~~
+	  //Set test Name
+	  $MeasName = $DO_PIN+"_DO-On";
+	  // show TestName
+	  $TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
+	  UpdateStatus($TempMsg);
+	  //Check for parallel testing
+	  $DO_ParallelTest = NumericComparison($DO_ParallelTest, 1, "==");
+	  $Temp = "ParallelTest="+$DO_ParallelTest;
+	  UpdateStatus($Temp);
+	  if($DO_ParallelTest==false)  //检查是否并行测试，如果不是并行测试将执行切换继电器和发送DO CMD
 	  {
-	    $result = SerialSendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
-	    $result = StringTrim($result);
-	    $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
-	    UpdateStatus($result);
-	    SleepMilliseconds(5);
+	    //~ // call Load box SW 加载负载
+	    $LoadBox_CMD=StringTrim($LoadBox_CMD);
+	    if($LoadBox_CMD !="N/A") // 如果是NA说明是直连负载不通过开关
+	    {
+	      $result = SerialSendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
+	      $result = StringTrim($result);
+	      $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
+	      UpdateStatus($result);
+	      SleepMilliseconds(5);
+	    }
 	  }
+	  
+	  // Generate DUT Command
+	  $CAN_Send_Msg ="00 10 31 01 C0 81 "+$DUT_CMD+" CC CC";
+	  $CAN_Rev_ExpMsg = "04 71 01 C0 81";
+	  $TempMsg = "DO-Command = "+$CAN_Send_Msg+"\n";
+	  UpdateStatus($TempMsg);
+	  //send can msg to DUT
+	  $CAN_LOOP=0;
+	  $Result=false;
+	  while($Result==false && $CAN_LOOP<3)
+	  {
+		  call ZLG_CANFD_Send();
+		  UpdateStatus($CAN_Send_Msg);
+		  SleepMilliseconds(500);
+		  //~ OperatorPrompt("send can msg Done", "OK");
+		  call ZLG_CANFD_Rev();
+		  UpdateStatus($CAN_Rev_Msg);
+		  // Check CAN Result
+		  $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+		  SleepMilliseconds(20);
+		  $CAN_LOOP=$CAN_LOOP+1;
+	  }
+	  RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
+	  //~ // call DMM test Vol
+	  //input:
+	  $Channel = CopyVariable($DMM_CH);
+	  $Rang="20";
+	  $lowerLimit = CopyVariable($DO_On_LSL);
+	  $upperLimit = CopyVariable($DO_On_USL);
+	  //Output:
+	  $DMMRead_Vol=0;
+	  //~ OperatorPrompt("Keysight6510_MeasureDCVoltage", "OK");
+	  call Keysight6510_MeasureDCVoltage();
+	  //check Test limit
+	  $measureName=$MeasName+"_Vol";
+	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
+	  $TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	  UpdateStatus($TempMsg);
+	  //~~~~~~~~~~~~~~~~~~DO Off test~~~~~~~~~~~~~~~~~~~~~~
+	  call DO_Load_Reset(); 	//~ //测试前关闭所有DO Loadbox SW
+	  $TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	  UpdateStatus($TempMsg);
 	}
-	//send can msg
-	call ZLG_CANFD_Send();
-	UpdateStatus($CAN_Send_Msg);
-	SleepMilliseconds(200);
-	call ZLG_CANFD_Rev();
-	UpdateStatus($CAN_Rev_Msg);
-	// Check CAN Result
-	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
-	RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
-	SleepMilliseconds(10);
-	OperatorPrompt($DO_PIN, "OK");
-	
-	//~ // call DMM test Vol
-	//input:
-	$Channel = CopyVariable($DMM_CH);
-	$Rang="20";
-	//Output:
-	$DMMRead_Vol=0;
-	call Keysight6510_MeasureDCVoltage();
-	//check Test limit
-	$measureName=$MeasName+"_Vol";
-	RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
-	
-	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
-	UpdateStatus($TempMsg);
-
-	//~~~~~~~~~~~~~~~~~~DO Off test~~~~~~~~~~~~~~~~~~~~~~
-	//Set test Name
-	$MeasName = $DO_PIN+"_DO-OFF";
-	$TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
-	UpdateStatus($TempMsg);
-	//Reset DO OUT
-	call DUT_ALL_DO_Off();	//~ //测试前关闭所有DO输出
-	// Check CAN Send Result
-	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
-	RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
-	
-	//~ // call Load box SW,释放万用表开关。
-	call DO_Load_Reset(); 	
-	$result="LoadBox Set DO "+$DO_PIN +"Off CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
-	UpdateStatus($result);
-	SleepMilliseconds(5);
-	
-	//~ // call DMM test Vol
-	//input:
-	$Channel = CopyVariable($DMM_CH);
-	$Rang="20";
-	//Output:
-	$DMMRead_Vol=0;
-	call Keysight6510_MeasureDCVoltage();
-	//check Test limit
-	$measureName=$MeasName+"_Vol";
-	RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
-	//add end test msg
-	
-	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
-	UpdateStatus($TempMsg);
 	$rows_Loop=$rows_Loop+1;
   }
-    UpdateStatus("~~~ DO Test END ~~~\r\n");
+    UpdateStatus("~~~ DigitalOut_TEST END ~~~\r\n");
     return;
 }
 
@@ -418,7 +381,7 @@ function Read_PWM_IN_By_PIN_25()
     call LoadExcelConfigFile();
     call PWMIN_Load_Reset(); 			// PWM IN 负载板初始化
     $Generate_Signal_Freq 	= 100;			//产生的信号频率，以Hz为单位
-    $Generate_Signal_Amp	=4.2			//产生的信号赋值，以VPP为单位
+    $Generate_Signal_Amp	=4.2;			//产生的信号赋值，以VPP为单位
     $Generate_Signal_DCYCle	=25;			//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
     call RIGOL_DG5072_Channel1_Output();	// call 产生PWM 信号
     $rows_Loop=0;
@@ -594,17 +557,17 @@ function LoadExcelConfigFile()
       UpdateStatus("~~~~~~Load Execel File~~~~");
   //INPUT-PARAM:
   
-    //~ $worksheet = 2; //shell DI
-    //~ $startcolumn = "A";
-    //~ $startRow = 2;
-    //~ $endColumn = "M";
-    //~ $endRow = 42;
-    //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
-  
+      //~ $worksheet = 2; //shell DI
+      //~ $startcolumn = "A";
+      //~ $startRow = 2;
+      //~ $endColumn = "M";
+      //~ $endRow = 42;
+      //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+    
   //OUTPUT-PARAM:
-    //~ $columns_Length
-    //~ $rows_Length
-    //~ $shell_Data_array
+      //~ $columns_Length
+      //~ $rows_Length
+      //~ $shell_Data_array
       $excelHandle = ExcelOpenFile($g_Config_excelFile);
       $shell_Data_array = ExcelGetRange($excelHandle, $worksheet, $startcolumn, $startRow, $endColumn, $endRow); 
       ExcelCloseFile($excelHandle);

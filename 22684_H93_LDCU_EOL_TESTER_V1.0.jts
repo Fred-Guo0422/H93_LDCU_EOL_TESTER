@@ -34,10 +34,22 @@
   call into_2702();
   call Write_PCBA_SN();
   call Read_PCBA_SN();
+  call read_Key_Model();
   call write_factory_mode_Start();
- 
-  call Read_Digital_IO_By_PIN();
-  call Set_Digital_OutPut();
+  call read_factory_mode_Start();
+  call Write_Key_Model();
+  //~ call Write_Car_Model();
+  //~ call read_Car_Model();
+  call PCAN_TEST();
+  call ICAN_TEST();
+  call UWBCAN_TEST();
+  call CAN_TEST();
+  call Eeprom_write();
+  call Eeprom_read();
+  call EMMC_write()
+  call EMMC_read();
+  call Digital_IN_TEST();
+  call Digital_Out_TEST();
   //~ OperatorPrompt($DI_PIN, "OK");
   End;
   
@@ -45,7 +57,6 @@
   call Read_Analog_INPUT_By_PIN();
 
 //~ call Read_PWM_IN_By_PIN();
-//~ call Set_Digital_OutPut();
 
 
 //~ call Set_Digital_OutPut();
@@ -54,35 +65,6 @@
 //~ call Get_Digital_input();
 //~ call Set_Digital_OutPut_DO_HS_Backlight();
 //~ OperatorPrompt("Debug", "OK");
-
-//call Read_Basic_SW_ver();
-//call Read_Boot_SW_ver();
-////~ call MCU_EOL_HeartBeat();
-//call into_1003();
-//call into_1060();
-////~ call MCU_EOL_HeartBeat();
-//call into_2701();
-//call into_2702();
-//call MCU_EOL_HeartBeat();
-//call write_factory_mode_Start();
-//call MCU_EOL_HeartBeat();
-//call read_factory_mode_Start();
-//call MCU_EOL_HeartBeat();
-//call Write_PCBA_SN();
-//call MCU_EOL_HeartBeat();
-//call Read_PCBA_SN();
-//call MCU_EOL_HeartBeat();
-////~ call Soft_restart();
-////~ call Write_Car_Model();
-////~ call read_Car_Model();
-////~ call Write_Key_Model();
-////~ call Write_ECU_offline_date();
-////~ call Read_ECU_offline_date();
-//call Get_Digital_input();
-//call MCU_EOL_HeartBeat();
-//call Set_Digital_OutPut_DO_HS_Backlight();
-//call MCU_EOL_HeartBeat();
-//call Read_PWM_INPUT();
 
 function Initialize()
 {
@@ -94,46 +76,66 @@ function Initialize()
   call Init_DAQ6509();
   call LoadDUTConfig();  // 加载产品配置文件
   call LoadingFixConfig(); //加载夹具控制配置文件
+  
+  call LoadBoxOpen();
+  call CanHubOpen();
+  
+  call Fixtures_Power_Controler_Open();
+  call Fixtures_PowerOn();
+  call Cylinder_Initialize();
   call Init_IT6722();
   call Init_DM6510();
   
   call Init_ZLG_USBCANFD();
   call ZLG_CANFD_Rev();  // 清空beffer
   call Read_ZLG_USBCANFD_Info();
-  
-  call LoadBoxOpen();
-  //~ call CanHubOpen();
+  // 设置心跳
+  call Add_ZLG_USBCANFD_AutoCAN();
+  call ZLG_USBCANFD_AutoCAN_Enable();
+
   
   call RIGOL_DG5072_Initialize();
   //~ OperatorPrompt("cell 1", "OK");
-  call Fixtures_Power_Controler_Open();
-  call Fixtures_PowerOn();
-  call Cylinder_Initialize();
   return;
 }
 
 function GlobalCleanup()
 {
+  call Cylinder_Initialize();
   call Close_ZLG_USBCANFD();  
+  call CanHubClose();
   call LoadBoxClose();
   call  Fixtures_Power_Controler_Close();
   call Close_IT6722();
   call Close_DM6510();
   call RIGOL_DG5072_Close();
-  call Cylinder_Initialize();
   End;
 }
 
 
 function OnAbort()
 {
-    call PostUUT();
-    return;
+  ///Release the fixture and the product will be disconnected from the power supply at PostUUT finish
+  call DUTPowerOff();
+  //~ call Cylinder_Initialize();//测试完成打开夹具
+  
+    if( $g_Testdebug)
+  {
+     OperatorPrompt("OnAbort", "OK");
+  }
+  End;
 }
 function OnFail()
 {
-  call PostUUT();
-  return;
+  ///Release the fixture and the product will be disconnected from the power supply at PostUUT finish
+  call DUTPowerOff();
+  //~ call Cylinder_Initialize();//测试完成打开夹具
+  
+    if( $g_Testdebug)
+  {
+     OperatorPrompt("OnFail", "OK");
+  }
+  End;
 }
 function PostUUT()
 {
@@ -142,25 +144,27 @@ function PostUUT()
   call DUTPowerOff();
   //~ call Cylinder_Initialize();//测试完成打开夹具
   
-    //~ if( $g_Testdebug)
-  //~ {
-     //~ OperatorPrompt("PostUUT", "OK");
-  //~ }
+    if( $g_Testdebug)
+  {
+     OperatorPrompt("PostUUT", "OK");
+  }
   End;
 }
 function PreUUT()
 {
   // Fixture control, product power-on and other initial actions will be completed in PreUUT//
-  SetTestName("PreUUT");
-  call LoadBoxResetSW(); // 所有负载继电器复位
-  call Fix_Start();
-  call PowerOn_IT6722();
-  call DUTPowerOn();
-  if( $g_Testdebug)
+   call Fix_Start();
+    if( $g_Testdebug)
   {
      OperatorPrompt("PreUUT", "OK");
   }
-   
+  SetTestName("PreUUT");
+  call LoadBoxResetSW(); // 所有负载继电器复位
+  call CANHubReset();
+ 
+  call PowerOn_IT6722();
+  call DUTPowerOn();
+
   return;
 }
 function AutomationLoop()
@@ -789,17 +793,7 @@ function Eeprom_write()
 }
 
 
-
-
-
-
-
-
-
-
-
-
-//~~~~~~~~~~~HW Function ~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Function ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  function DUTPowerOn()
  {
 //J2 PIN-1 J_DI_KL15_BackUp_HS to VBAT+
@@ -912,6 +906,8 @@ function Fixtures_PowerOn()
   return;
 }
 
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sub CAN Test //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function CanHubOpen()
 {
   $g_Can_Hub_Port = ReadIniFile($g_System_Config_File,"HW_Config","Can_Hub_Port");
@@ -925,6 +921,59 @@ function CanHubClose()
   return;
 }
 
+
+function PCAN_TEST()
+{
+  //switch to PCAN_TEST
+  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS8]","Channel 8 on",500);
+  UpdateStatus($result);
+  SleepMilliseconds(500);
+  call ZLG_CANFD_CH2_Rev();
+  UpdateStatus($CAN_Rev_Msg);
+  call CANHubReset();
+  return;
+}
+function ICAN_TEST()
+{
+  //switch to ICAN_TEST
+  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS7]","Channel 7 on",500);
+  UpdateStatus($result);
+  SleepMilliseconds(500);
+  call ZLG_CANFD_CH2_Rev();
+  UpdateStatus($CAN_Rev_Msg);
+  call CANHubReset();
+  return;
+}
+function UWBCAN_TEST()
+{
+  //switch to UWBCAN_TEST
+  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS6]","Channel 6 on",500);
+  UpdateStatus($result);
+  SleepMilliseconds(500);
+  call ZLG_CANFD_CH2_Rev();
+  UpdateStatus($CAN_Rev_Msg);
+  call CANHubReset();
+  return;
+}
+function CAN_TEST()
+{
+  //switch to UWBCAN_TEST
+  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS5]","Channel 5 on",500);
+  UpdateStatus($result);
+  SleepMilliseconds(500);
+  call ZLG_CANFD_CH2_Rev();
+  UpdateStatus($CAN_Rev_Msg);
+  call CANHubReset();
+  return;
+}
+
+function CANHubReset()
+{
+  //CAN Hub Reset this can hub addr is 0x1
+  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS0]","ALL Channel off",500);
+  UpdateStatus($result);
+  return;
+}
 
 //扫描并检查条码
 function VerifySerialNumber()

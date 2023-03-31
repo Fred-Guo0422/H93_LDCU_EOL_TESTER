@@ -85,43 +85,44 @@ function Keysight6510_MeasureCurrent()
 
 function Keysight6510_MeasureDCVoltage()
 {
-    //input:
-	  //1,$g_DAQ6510_Handle
-	  //2,$Channel
-	  // 3,$Rang
-  //Output:
-	  //1,$DMMRead_Vol
-  
-  UpdateStatus("----------------------------- Keysight_DMM_MeasureVoltage ------------------------------"); 
-  //SENS:FUNC 'VOLT', (@113)\r\n
-  $Set_Voltage_Meas = "SENS:FUNC 'VOLT', (@" + $Channel + ")\r\n";
-  //":SENS:FUNC ‘VOLTage’ ,(@"+ $Channel +");:SENS:VOLTage:RANG:AUTO ON ,(@"+ $Channel +")\r\n"
-  IviVISA_Write($g_DAQ6510_Handle,$Set_Voltage_Meas); 
-  //ROUT:CLOS (@113)\r\n
-  $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
-  IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
-  //SENS:VOLT:RANG 100, (@113)\r\n
-  //~ $Rang = "10";
-  $DAQ6510_VOLT_RANG = "SENS:VOLT:RANG " +$Rang + ", (@" + $Channel + ")\r\n";
-  IviVISA_Write($g_DAQ6510_Handle,$DAQ6510_VOLT_RANG); 
-  
-  $Meas_flag = false;
-  $Meas_loop = 0;
-  while(!$Meas_flag && $Meas_loop < 3)
-  {
-      IviVISA_Write($g_DAQ6510_Handle,$g_DAQ6510_Read); 
-      $DMMRead_Vol = IviVISA_Read($g_DAQ6510_Handle);
-      //~ $DMMRead_Vol = Round($DMMRead_Vol,3);
-      UpdateStatus($DMMRead_Vol);
-      $Meas_flag =  ($DMMRead_Vol >= $lowerLimit) && ($DMMRead_Vol <= $upperLimit);
-      if(!$Meas_flag)
-      {
-	  SleepMilliseconds(300);
-      }
-      $Meas_loop = $Meas_loop + 1;
+      //input:
+	    //1,$g_DAQ6510_Handle
+	    //2,$Channel
+	    // 3,$Rang
+    //Output:
+	    //1,$DMMRead_Vol
+    
+    UpdateStatus("----------------------------- Keysight_DMM_MeasureVoltage ------------------------------"); 
+    //SENS:FUNC 'VOLT', (@113)\r\n
+    $Set_Voltage_Meas = "SENS:FUNC 'VOLT', (@" + $Channel + ")\r\n";
+    //":SENS:FUNC ‘VOLTage’ ,(@"+ $Channel +");:SENS:VOLTage:RANG:AUTO ON ,(@"+ $Channel +")\r\n"
+    IviVISA_Write($g_DAQ6510_Handle,$Set_Voltage_Meas); 
+    //ROUT:CLOS (@113)\r\n
+    $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+    IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+    //SENS:VOLT:RANG 100, (@113)\r\n
+    //~ $Rang = "10";
+    $DAQ6510_VOLT_RANG = "SENS:VOLT:RANG " +$Rang + ", (@" + $Channel + ")\r\n";
+    IviVISA_Write($g_DAQ6510_Handle,$DAQ6510_VOLT_RANG); 
+    
+    $Meas_flag = false;
+    $Meas_loop = 0;
+    while(!$Meas_flag && $Meas_loop < 3)
+    {
+	IviVISA_Write($g_DAQ6510_Handle,$g_DAQ6510_Read); 
+	$DMMRead_Vol = IviVISA_Read($g_DAQ6510_Handle);
+	//~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+	$temp="Vol="+$DMMRead_Vol;
+	UpdateStatus($temp);
+	$Meas_flag =  ($DMMRead_Vol >= $lowerLimit) && ($DMMRead_Vol <= $upperLimit);
+	if(!$Meas_flag)
+	{
+	    SleepMilliseconds(20);
+	}
+	$Meas_loop = $Meas_loop + 1;
+    }
+    return; 
   }
-  return; 
-}
 
 
 function Keysight6510_MeasureACVoltage()
