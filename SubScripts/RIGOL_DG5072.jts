@@ -10,9 +10,7 @@
 //~ call RIGOL_DG5072_Close();
 //~ End;
 
-
-
-function RIGOL_DG5072_Initialize()								//Initial Instruments
+function RIGOL_DG5072_Initialize()								
 {
     $RIGOL_DG5072_VISA = ReadIniFile($g_System_Config_File,"HW_Config","DG5072_Port");
     UpdateStatus("......RIGOL_DG5072_Initialize");
@@ -43,17 +41,20 @@ function RIGOL_DG5072_Initialize()								//Initial Instruments
 }
 
 
-//Input:   	$Generate_Signal_Freq	产生的信号频率，以Hz为单位
-//Input	$Generate_Signal_Amp	产生的信号赋值，以VPP为单位
-//Input	$Generate_Signal_DCYCle	产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
-function RIGOL_DG5072_Channel1_Output()								//Initial Instruments
+
+function RIGOL_DG5072_Channel_Output()							
 {
-    UpdateStatus("......RIGOL_DG5072 Channel1 Output");
+
+  //Input:   	$Generate_Signal_Freq	产生的信号频率，以Hz为单位
+  //Input	$Generate_Signal_Amp	产生的信号赋值，以VPP为单位
+  //Input	$Generate_Signal_DCYCle	产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+  //Input	$Set_Channel_Number
+  UpdateStatus("......RIGOL_DG5072 Channel1 Output");
     
     $Generate_Signal_Offset=0;		//默认的信号幅值偏差, 默认为0V
     $Generate_Signal_Phase=0;		//默认的信号角度偏差, 默认为0°
     
-    $Set_Channel_Number=1;		//预留的通道设置位致
+    //~ $Set_Channel_Number=1;		//预留的通道设置位致
     
     //[:SOURce<n>]:APPLy:SQUare [<freq>[,<amp>[,<offset>[,<phase>]]]]      
     //● <freq>：1 μHz至120 MHz，单位默认为“Hz”。
@@ -77,11 +78,10 @@ function RIGOL_DG5072_Channel1_Output()								//Initial Instruments
     return;
 }
 
-function RIGOL_DG5072_Channel1_OutOff()								//Initial Instruments
+function RIGOL_DG5072_Channel_OutOff()								
 {
+   //~ $Set_Channel_Number=1;		//预留的通道设置位致
     UpdateStatus("......RIGOL_DG5072 Channel1 OutOff");
-    
-    $Set_Channel_Number=1;		//预留的通道设置位致
     
     $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" OFF";
     $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;

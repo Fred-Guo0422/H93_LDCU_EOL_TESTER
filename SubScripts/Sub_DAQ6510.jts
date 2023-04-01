@@ -111,9 +111,12 @@ function Keysight6510_MeasureDCVoltage()
     {
 	IviVISA_Write($g_DAQ6510_Handle,$g_DAQ6510_Read); 
 	$DMMRead_Vol = IviVISA_Read($g_DAQ6510_Handle);
+	$DMMRead_Vol = Abs($DMMRead_Vol); 
+      
 	//~ $DMMRead_Vol = Round($DMMRead_Vol,3);
 	$temp="Vol="+$DMMRead_Vol;
 	UpdateStatus($temp);
+	
 	$Meas_flag =  ($DMMRead_Vol >= $lowerLimit) && ($DMMRead_Vol <= $upperLimit);
 	if(!$Meas_flag)
 	{
