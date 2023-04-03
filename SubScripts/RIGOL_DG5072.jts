@@ -96,5 +96,5 @@ function RIGOL_DG5072_Close()
     UpdateStatus("......RIGOL_DG5072_Connect Close");
     NIVISA_Close($RIGOL_DG5072_Handle);
     return;
-}
-    
+}    
+

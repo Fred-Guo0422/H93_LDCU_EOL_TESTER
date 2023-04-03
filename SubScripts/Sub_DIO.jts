@@ -2,13 +2,13 @@
 function DI_Load_Reset()
 {
     // 断开所有负载箱DI负载
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"5MSET0000000000000000$","OK",500);
+    $result = Serial_SendMilliseconds($g_LoadBox_Handle,"5MSET0000000000000000$","OK",500);
     $result="LoadBox board addr 5: "+$result;
     UpdateStatus($result);
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"8MSET0000000000000000$","OK",500);
+    $result = Serial_SendMilliseconds($g_LoadBox_Handle,"8MSET0000000000000000$","OK",500);
      $result="LoadBox board addr 8: "+$result;
     UpdateStatus($result);
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"BMSET0000000000000000$","OK",500);
+    $result = Serial_SendMilliseconds($g_LoadBox_Handle,"BMSET0000000000000000$","OK",500);
     $result="LoadBox board addr 8: "+$result;
     UpdateStatus($result);
     return;
@@ -219,7 +219,7 @@ function Digital_IN_LOADING_TEST()
 	  if(!$DI_ParallelTest)
 	  {
 	    //call set load box to state2
-	    $result = SerialSendMilliseconds($g_LoadBox_Handle,$DI_LoadboxCMD_State2,"OK",500);
+	    $result = Serial_SendMilliseconds($g_LoadBox_Handle,$DI_LoadboxCMD_State2,"OK",500);
 	    $result="LoadBox Set State2: "+$DI_LoadboxCMD_State2+" "+$result;
 	    UpdateStatus($result);
 	    SleepMilliseconds(200);
@@ -244,7 +244,7 @@ function Digital_IN_LOADING_TEST()
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Digital OUTPUT~~~~~~~~~~~~~~~~~~~~~~~~~~
 function DO_Load_Reset()
 {
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
+    $result = Serial_SendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
     $result="LoadBox board addr 6: "+$result+"\r\n";
     UpdateStatus($result);
     $result="DO load reset done!"+"\r\n";
@@ -259,6 +259,14 @@ function ALL_DO_Off()
     SleepMilliseconds(100);
     call ZLG_CANFD_Rev();
     UpdateStatus($CAN_Rev_Msg);
+   $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+  
+  if($result ==false)
+    {
+      $result="DUT DO reset failed!"+"\r\n";
+      UpdateStatus($result);
+      Abort("Set DUT DO Reset Failed");
+    }
     return;
 }
 function Digital_OUT_TEST()
@@ -324,7 +332,7 @@ function Digital_OUT_TEST()
 	    $LoadBox_CMD=StringTrim($LoadBox_CMD);
 	    if($LoadBox_CMD !="N/A") // 如果是NA说明是直连负载不通过开关
 	    {
-	      $result = SerialSendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
+	      $result = Serial_SendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
 	      $result = StringTrim($result);
 	      $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
 	      UpdateStatus($result);
@@ -394,25 +402,26 @@ function Digital_OUT_TEST()
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PWM INPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-function Read_PWM_IN_By_PIN_25()
+function PWM_IN_TEST_Duty75%()
 {
-    SetTestName("PWM_INPUT_25%");
-    $worksheet = 5; //shell PWM_IN
-    $startcolumn = "A";
-    $startRow = 3;
-    $endColumn = "T";
-    $endRow = 17;
+    SetTestName("PWM_IN_75%");
+    $worksheet 	= 5; //shell PWM_IN
+    $startcolumn 	= "A";
+    $startRow 	= 4;
+    $endColumn 	= "W";
+    $endRow 	= 17;
     $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
     UpdateStatus($Temp);
     //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
     call LoadExcelConfigFile();
+     
     call PWMIN_Load_Reset(); 			// PWM IN 负载板初始化
-  
-    $Set_Channel_Number=1; 				// channel is PWM ch
+    $Set_Channel_Number	=1; 			// channel is PWM ch
     $Generate_Signal_Freq 	= 100;		//产生的信号频率，以Hz为单位
-    $Generate_Signal_Amp	=4.2;		//产生的信号赋值，以VPP为单位
-    $Generate_Signal_DCYCle	=25;		//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+    $Generate_Signal_Amp	=7;			//产生的信号赋值，以VPP为单位
+    $Generate_Signal_DCYCle	=25;			//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
     call RIGOL_DG5072_Channel_Output();	// call 产生PWM 信号
+   
     $rows_Loop=0;
     while($rows_Loop < $rows_Length)
     {
@@ -422,77 +431,234 @@ function Read_PWM_IN_By_PIN_25()
 	$PWMIN_Funtion					=Array1DGetValue($rowArray ,1);
 	$PWMIN_SingalType				=Array1DGetValue($rowArray ,2);
 	$PWMIN_Remark					=Array1DGetValue($rowArray ,3);
+      
 	$PWMIN_DUT_Command			=Array1DGetValue($rowArray ,6);
-	$PWMIN_LoadBoxCommand			=Array1DGetValue($rowArray ,7);
-	$Freq_Start_bit					=Array1DGetValue($rowArray ,8);
-	$Duty_Start_bit					=Array1DGetValue($rowArray ,9);
+	$PWMIN_LoadBoxReset				=Array1DGetValue($rowArray ,7);
+	$PWMIN_LoadBoxCommand			=Array1DGetValue($rowArray ,8);
+	$Freq_Start_bit					=Array1DGetValue($rowArray ,9);
+	$Duty_Start_bit					=Array1DGetValue($rowArray ,10);
 	// LOAD LIMIT Start1(25%)
-	$State1_Freq_LSL				=Array1DGetValue($rowArray ,10);
-	$State1_Freq_USL				=Array1DGetValue($rowArray ,11);
-	$State1_Duty_LSL				=Array1DGetValue($rowArray ,12);
-	$State1_Duty_USL				=Array1DGetValue($rowArray ,13);
+	$State1_duty					=Array1DGetValue($rowArray ,11);
+	$State1_Freq_LSL				=Array1DGetValue($rowArray ,12);
+	$State1_Freq_USL				=Array1DGetValue($rowArray ,13);
+	$State1_Duty_LSL				=Array1DGetValue($rowArray ,14);
+	$State1_Duty_USL				=Array1DGetValue($rowArray ,15);
        // LOAD LIMIT Start2 (75%)
-	$State2_Freq_LSL				=Array1DGetValue($rowArray ,14);
-	$State2_Freq_USL				=Array1DGetValue($rowArray ,15);
-	$State2_Duty_LSL				=Array1DGetValue($rowArray ,16);
-	$State2_Duty_USL				=Array1DGetValue($rowArray ,17);
- 	$TestEnable					=Array1DGetValue($rowArray ,18);
-	$ParallelTest					=Array1DGetValue($rowArray ,19);      
+	$State2_duty					=Array1DGetValue($rowArray ,16);
+	$State2_Freq_LSL				=Array1DGetValue($rowArray ,17);
+	$State2_Freq_USL				=Array1DGetValue($rowArray ,18);
+	$State2_Duty_LSL				=Array1DGetValue($rowArray ,19);
+	$State2_Duty_USL				=Array1DGetValue($rowArray ,20);
+ 	$TestEnable					=Array1DGetValue($rowArray ,21);
+	$ParallelTest					=Array1DGetValue($rowArray ,22);      
 	//Show Pin info
-	 $TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 25% Start~~~~~~~\n";
+	 $TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 25% ~~~~~~~\n";
 	 UpdateStatus($TempMsg);
-	 
-	 //~~~~~~~~~~~~~Test Duty 25%~~~~~~~~~~~~
-	 // 设置loadbox 通道
-	$result = SerialSendMilliseconds($g_LoadBox_Handle,$PWMIN_LoadBoxCommand,"OK",500);
-	$result="LoadBox Board set: "+$PWMIN_PIN+"PWM IN CH :"+$result+"\r\n";
-	UpdateStatus($result);
-	// Call get DUT PWM Data
-	SleepMilliseconds(100);
-	call SUB_Read_PWM_INPUT();  
-       
-	//~~~~~~~~~Get Freq Data~~~~~~~~~
-	
-	 //开始bit 除以8 得到开始的byte，开始byte +1 得到结束byte
-	$PWM_Freq_Start_Byte	= Divide($Freq_Start_bit,8);
-	$TempMag= "PWM_Freq_Start_Byte="+$PWM_Freq_Start_Byte;
-	UpdateStatus($TempMag);
-	UpdateStatus($Freq_Start_bit);
-	$PWM_Freq_End_Byte	=Add($PWM_Freq_Start_Byte,1);
-	$TempMag= "PWM_Freq_End_Byte="+$PWM_Freq_End_Byte;
-	UpdateStatus($TempMag);
-	//通过开始和结束byte得到frequency
-	$PWM_Freq_Start_Byte = Array1DGetValue($PWM_INPUT_Data_array,$PWM_Freq_Start_Byte);
-	$PWM_Freq_End_Byte =($PWM_INPUT_Data_array,$PWM_Freq_End_Byte);
-	$PWM_Freq =$PWM_Freq_End_Byte+$PWM_Freq_Start_Byte;
-	UpdateStatus($PWM_Freq);
-	
-	$PWM_Freq = HexStringToInteger($PWM_Freq);
-	$MeasuName =$PWMIN_PIN+"_Freq_25%)";
-	//check Result for Freq
-	RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "Hz", true, $State1_Freq_LSL, $State1_Freq_USL, true);
-	
-	//~~~~~~~~~Get duty date~~~~~~~~~
-	$PWM_Duty_Start_Byte =  Divide($Duty_Start_bit,8);
-	$TempMag= "PWM_Duty_Start_Byte="+$PWM_Duty_Start_Byte;
-	UpdateStatus($TempMag);
-	UpdateStatus($Duty_Start_bit);
-	$PWM_Duty_End_Byte	=Add($PWM_Duty_Start_Byte,1);
-	$TempMag= "PWM_Duty_End_Byte="+$PWM_Duty_End_Byte;
-	UpdateStatus($TempMag);
-	
-	$PWM_Duty_Start_Byte = Array1DGetValue($PWM_INPUT_Data_array,$PWM_Duty_Start_Byte);
-	$PWM_Duty_End_Byte =($PWM_INPUT_Data_array,$PWM_Duty_End_Byte);
-	
-	$PWM_Duty =$PWM_Duty_End_Byte+$PWM_Duty_Start_Byte;
-	UpdateStatus($PWM_Duty);
-	
-	$PWM_Duty = HexStringToInteger($PWM_Duty);
-	$PWM_Duty = $PWM_Duty*0.1; //乘以转换比率
-	$MeasuName =$PWMIN_PIN+"_Duty_25%)";
-	//Check Result for Duty
-	RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "%", true, $State1_Duty_LSL, $State1_Duty_USL, true);
-	call PWMIN_Load_Reset(); // PWM IN 负载板初始化
+	 $TestEnable = NumericComparison($TestEnable, 1, "==");
+	 if($TestEnable ==true)
+	 {
+	   //~~~~~~~~~~~~~Test Duty 25%~~~~~~~~~~~~
+	   // 设置loadbox 通道
+	  $result = Serial_SendMilliseconds($g_LoadBox_Handle,$PWMIN_LoadBoxCommand,"OK",500);
+	  $result="LoadBox Board set: "+$PWMIN_PIN+"PWM IN CH :"+$result+"\r\n";
+	  UpdateStatus($result);
+	   if($g_PWMIN_TestDebug==true)
+	   {
+	      $Debug_info=$PWMIN_PIN+" "+$State2s_duty+"%"+"\r\nContinue debugging PWM_IN?";
+	      $result=OperatorPrompt($Debug_info, "OKCancel");
+	      $StopTest = StringComparison($result,"Cancel","==");
+	     if($StopTest==true)
+	     {
+	       Abort("On PWM_IN DEBUG Test User Abort!");
+	      }
+	    }
+	  
+	   
+	   $ParallelTest = NumericComparison($ParallelTest, 1, "==");
+	   if($ParallelTest == false)
+	   {	   
+	      // Call get DUT PWM Data
+	      SleepMilliseconds(500);
+	      call SUB_Read_PWM_INPUT();  
+	   }
+	  UpdateStatus("\n\t~~~~~~~~~Get Freq Data~~~~~~~~~");
+	  
+	  //开始bit 除以8 得到开始的byte，开始byte +1 得到结束byte
+	  $PWM_Freq_Start_Byte= Divide($Freq_Start_bit,8);
+	  $TempMag= "PWM_Freq_Start_Byte="+$PWM_Freq_Start_Byte;
+	  UpdateStatus($TempMag);
+	  UpdateStatus($Freq_Start_bit);
+	  $PWM_Freq_End_Byte	=Add($PWM_Freq_Start_Byte,1);
+	  $TempMag= "PWM_Freq_End_Byte="+$PWM_Freq_End_Byte;
+	  UpdateStatus($TempMag);
+	  //通过开始和结束byte得到frequency
+	  $PWM_Freq_Start_Byte = Array1DGetValue($PWM_INPUT_Data_array,$PWM_Freq_Start_Byte);
+	  $PWM_Freq_End_Byte =($PWM_INPUT_Data_array,$PWM_Freq_End_Byte);
+	  $PWM_Freq =$PWM_Freq_Start_Byte+$PWM_Freq_End_Byte;
+	  $TempMag="PWM_Freq_HEX="+$PWM_Freq;
+	  UpdateStatus($TempMag);
+	  
+	  $PWM_Freq = HexStringToInteger($PWM_Freq);
+	  $MeasuName =$PWMIN_PIN+"_Freq_25%)";
+	  //check Result for Freq
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "Hz", true, $State2_Freq_LSL, $State2_Freq_USL, true);
+	  
+	  UpdateStatus("\n\t~~~~~~~~~Get duty date~~~~~~~~~");
+	  $PWM_Duty_Start_Byte =  Divide($Duty_Start_bit,8);
+	  $TempMag= "PWM_Duty_Start_Byte="+$PWM_Duty_Start_Byte;
+	  UpdateStatus($TempMag);
+	  UpdateStatus($Duty_Start_bit);
+	  $PWM_Duty_End_Byte	=Add($PWM_Duty_Start_Byte,1);
+	  $TempMag= "PWM_Duty_End_Byte="+$PWM_Duty_End_Byte;
+	  UpdateStatus($TempMag);
+	  
+	  $PWM_Duty_Start_Byte = Array1DGetValue($PWM_INPUT_Data_array,$PWM_Duty_Start_Byte);
+	  $PWM_Duty_End_Byte =($PWM_INPUT_Data_array,$PWM_Duty_End_Byte);
+	  $PWM_Duty =$PWM_Duty_Start_Byte+$PWM_Duty_End_Byte;
+	  
+	  $TempMag="PWM_Duty_HEX="+$PWM_Duty ;
+	  UpdateStatus($TempMag);
+	  
+	  $PWM_Duty = HexStringToInteger($PWM_Duty);
+	  $PWM_Duty = $PWM_Duty*0.1; //乘以转换比率
+	  $MeasuName =$PWMIN_PIN+"_Duty_75%)";
+	  //Check Result for Duty
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Duty, "%", true, $State2_Duty_LSL, $State2_Duty_USL, true);
+	  call PWMIN_Load_Reset(); // PWM IN 负载板初始化
+      }
+	$rows_Loop=$rows_Loop+1;
+    }
+    return;
+}
+
+
+function PWM_IN_TEST_Duty25%()
+{
+    SetTestName("PWM_IN_25%");
+    $worksheet 	= 5; //shell PWM_IN
+    $startcolumn 	= "A";
+    $startRow 	= 4;
+    $endColumn 	= "W";
+    $endRow 	= 17;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+    call LoadExcelConfigFile();
+     
+    call PWMIN_Load_Reset(); 			// PWM IN 负载板初始化
+    $Set_Channel_Number	=1; 			// channel is PWM ch
+    $Generate_Signal_Freq 	= 100;		//产生的信号频率，以Hz为单位
+    $Generate_Signal_Amp	=7;			//产生的信号赋值，以VPP为单位
+    $Generate_Signal_DCYCle	=75;			//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+    call RIGOL_DG5072_Channel_Output();	// call 产生PWM 信号
+   
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+	// Loading Config info
+	$rowArray 						= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$PWMIN_PIN					=Array1DGetValue($rowArray ,0);
+	$PWMIN_Funtion					=Array1DGetValue($rowArray ,1);
+	$PWMIN_SingalType				=Array1DGetValue($rowArray ,2);
+	$PWMIN_Remark					=Array1DGetValue($rowArray ,3);
+      
+	$PWMIN_DUT_Command			=Array1DGetValue($rowArray ,6);
+	$PWMIN_LoadBoxReset				=Array1DGetValue($rowArray ,7);
+	$PWMIN_LoadBoxCommand			=Array1DGetValue($rowArray ,8);
+	$Freq_Start_bit					=Array1DGetValue($rowArray ,9);
+	$Duty_Start_bit					=Array1DGetValue($rowArray ,10);
+	// LOAD LIMIT Start1(25%)
+	$State1_duty					=Array1DGetValue($rowArray ,11);
+	$State1_Freq_LSL				=Array1DGetValue($rowArray ,12);
+	$State1_Freq_USL				=Array1DGetValue($rowArray ,13);
+	$State1_Duty_LSL				=Array1DGetValue($rowArray ,14);
+	$State1_Duty_USL				=Array1DGetValue($rowArray ,15);
+       // LOAD LIMIT Start2 (75%)
+	$State2_duty					=Array1DGetValue($rowArray ,16);
+	$State2_Freq_LSL				=Array1DGetValue($rowArray ,17);
+	$State2_Freq_USL				=Array1DGetValue($rowArray ,18);
+	$State2_Duty_LSL				=Array1DGetValue($rowArray ,19);
+	$State2_Duty_USL				=Array1DGetValue($rowArray ,20);
+ 	$TestEnable					=Array1DGetValue($rowArray ,21);
+	$ParallelTest					=Array1DGetValue($rowArray ,22);      
+	//Show Pin info
+	 $TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 25% ~~~~~~~\n";
+	 UpdateStatus($TempMsg);
+	 $TestEnable = NumericComparison($TestEnable, 1, "==");
+	 if($TestEnable ==true)
+	 {
+	   //~~~~~~~~~~~~~Test Duty 25%~~~~~~~~~~~~
+	   // 设置loadbox 通道
+	  $result = Serial_SendMilliseconds($g_LoadBox_Handle,$PWMIN_LoadBoxCommand,"OK",500);
+	   UpdateStatus($PWMIN_LoadBoxCommand); // show CMD 
+	  $result="LoadBox Board set: "+$PWMIN_PIN+"PWM IN CH :"+$result+"\r\n";
+	  UpdateStatus($result);
+	   if($g_PWMIN_TestDebug==true)
+	   {
+	      $Debug_info=$PWMIN_PIN+" "+$State2_duty+"%"+"\r\nContinue debugging PWM_IN?";
+	      $result=OperatorPrompt($Debug_info, "OKCancel");
+	      $StopTest = StringComparison($result,"Cancel","==");
+	     if($StopTest==true)
+	     {
+	       Abort("On PWM_IN DEBUG Test User Abort!");
+	      }
+	    }
+	  
+	   
+	   $ParallelTest = NumericComparison($ParallelTest, 1, "==");
+	   if($ParallelTest == false)
+	   {	   
+	      // Call get DUT PWM Data
+	      SleepMilliseconds(500);
+	      call SUB_Read_PWM_INPUT();  
+	   }
+	  UpdateStatus("\n\t~~~~~~~~~Get Freq Data~~~~~~~~~");
+	  
+	  //开始bit 除以8 得到开始的byte，开始byte +1 得到结束byte
+	  $PWM_Freq_Start_Byte= Divide($Freq_Start_bit,8);
+	  $TempMag= "PWM_Freq_Start_Byte="+$PWM_Freq_Start_Byte;
+	  UpdateStatus($TempMag);
+	   
+	  $PWM_Freq_End_Byte	=Add($PWM_Freq_Start_Byte,1);
+	  $TempMag= "PWM_Freq_End_Byte="+$PWM_Freq_End_Byte;
+	  UpdateStatus($TempMag);
+	   
+	  //通过开始和结束byte得到frequency
+	  $PWM_Freq_Start_Byte = Array1DGetValue($PWM_INPUT_Data_array,$PWM_Freq_Start_Byte);
+	  $PWM_Freq_End_Byte =Array1DGetValue($PWM_INPUT_Data_array,$PWM_Freq_End_Byte);
+	   
+	  $PWM_Freq =$PWM_Freq_Start_Byte+$PWM_Freq_End_Byte;
+	  $TempMag="PWM_Freq_HEX="+$PWM_Freq;
+	  UpdateStatus($TempMag);
+	  
+	  $PWM_Freq = HexStringToInteger($PWM_Freq);
+	  $MeasuName =$PWMIN_PIN+"_Freq_25%)";
+	  //check Result for Freq
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "Hz", true, $State1_Freq_LSL, $State1_Freq_USL, true);
+	  
+	  UpdateStatus("\n\t~~~~~~~~~Get duty date~~~~~~~~~");
+	  $PWM_Duty_Start_Byte =  Divide($Duty_Start_bit,8);
+	  $TempMag= "PWM_Duty_Start_Byte="+$PWM_Duty_Start_Byte;
+	  UpdateStatus($TempMag);
+	  UpdateStatus($Duty_Start_bit);
+	  $PWM_Duty_End_Byte	=Add($PWM_Duty_Start_Byte,1);
+	  $TempMag= "PWM_Duty_End_Byte="+$PWM_Duty_End_Byte;
+	  UpdateStatus($TempMag);
+	  
+	  $PWM_Duty_Start_Byte = Array1DGetValue($PWM_INPUT_Data_array,$PWM_Duty_Start_Byte);
+	  $PWM_Duty_End_Byte =Array1DGetValue($PWM_INPUT_Data_array,$PWM_Duty_End_Byte);
+	  $PWM_Duty =$PWM_Duty_Start_Byte+$PWM_Duty_End_Byte;
+	  
+	  $TempMag="PWM_Duty_HEX="+$PWM_Duty ;
+	  UpdateStatus($TempMag);
+	  
+	  $PWM_Duty = HexStringToInteger($PWM_Duty);
+	  $PWM_Duty = $PWM_Duty*0.1; //乘以转换比率
+	  $MeasuName =$PWMIN_PIN+"_Duty_25%)";
+	  //Check Result for Duty
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Duty, "%", true, $State1_Duty_LSL, $State1_Duty_USL, true);
+	  call PWMIN_Load_Reset(); // PWM IN 负载板初始化
+      }
 	$rows_Loop=$rows_Loop+1;
     }
     return;
@@ -500,7 +666,7 @@ function Read_PWM_IN_By_PIN_25()
 
 function SUB_Read_PWM_INPUT()
 {
-    UpdateStatus("=>>>>>>>>>>>>>>>>>> Read_PWM_INPUT_start>>>>>>>>>>>>>>>\r\n");
+    UpdateStatus("\r\n~~~~~~~~~~ Read_PWM_INPUT_start~~~~~~~~~~\r\n");
     //~ 公共函数，获取所有PWM的Data 以下为Demo Data
     //~ ID:07E8,data:10 54 71 03 C0 82 00 64 01 F7 00 64 00 00 00 64 00 00 00 00 03 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 ;I
     //~D:07E8,data:21 01 F4 00 00 00 00 00 00 00 00 00 64 00 00 00 00 00 00 00 00 00 00 AA ;
@@ -511,19 +677,26 @@ function SUB_Read_PWM_INPUT()
     $CAN_Send_Msg = "04 31 03 C0 82 CC CC CC";
     $CAN_Rev_ExpMsg = "ID:07E8,data:10 54 71 03 C0 82";	
     $MeasurementName = "Read_PWM_INPUT(First_frame)";
-    call ZLG_CANFD_Send();//send can msg
-    SleepMilliseconds(30);
-    call ZLG_CANFD_Rev();
-    $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
-    //~ UpdateStatus($CAN_Rev_Msg);
-    $show_CAN_Rev_Msg="CAN_Rev_Msg_First_frame="+$CAN_Rev_Msg;
-    UpdateStatus($show_CAN_Rev_Msg);
-    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    $Loop=0;
+    $Result=false;
+    while($Result==false && $Loop<3)
+    {
+        call ZLG_CANFD_Send();//send can msg
+	SleepMilliseconds(30);
+	call ZLG_CANFD_Rev();
+	$CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
+	//~ UpdateStatus($CAN_Rev_Msg);
+	$show_CAN_Rev_Msg="CAN_Rev_Msg_First_frame="+$CAN_Rev_Msg;
+	UpdateStatus($show_CAN_Rev_Msg);
+	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+
+	$Loop=$Loop+1;
+     }
+    // ~~~~~~~~~获取第一帧~~~~~~~
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
     $CAN_Rev_Msg_First_frame=$CAN_Rev_Msg ;
     $CAN_Rev_Msg_First_frame = StringParse($CAN_Rev_Msg_First_frame, $CAN_Rev_ExpMsg, ";"); 
-   
-   // ~~~~~~~~~获取第二帧~~~~~~~
+    // ~~~~~~~~~获取第二帧~~~~~~~
     $CAN_Send_Msg = "30 00 00 CC CC CC CC CC";
     $CAN_Rev_ExpMsg = "ID:07E8,data:21";	
     $MeasurementName = "Read_PWM_INPUT(21_frame)";
@@ -559,7 +732,7 @@ function SUB_Read_PWM_INPUT()
     $measName="PWM_INPUT_Data";
     RecordMeasurement($measName, $PWM_IN_DATA, "NA", true); 
     
-    UpdateStatus("=>>>>>>>>>>>>>>>>>> Read_PWM_INPUT_END>>>>>>>>>>>>>>>\r\n");
+    UpdateStatus("\r\n~~~~~~~~~~ Read_PWM_INPUT_END~~~~~~~~~~\r\n");
     return;
  }
 
@@ -567,15 +740,14 @@ function SUB_Read_PWM_INPUT()
 
  function PWMIN_Load_Reset()
 {
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"AMSET0000000000000000$","OK",500);
-    if($result!=true)
+    ($returned, $found)  = Serial_SendMillisecondsBool($g_LoadBox_Handle,"AREST$","OK",500);
+    if(!$found)
     {
-      SetFailFunction("DO_Load_Reset");
+      Abort("PWMIN Load Reset Failed");
     }
-    $result="LoadBox board addr A: "+$result+"\r\n";
-    UpdateStatus($result);
-    $result="DO load reset done!"+"\r\n";
-
+    $returned="LoadBox board addr A: "+$returned+"\r\n";
+    UpdateStatus($returned);
+  
     return;
 }
  
@@ -691,13 +863,13 @@ function SET_PWM_OUT()
  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Analog_INPUT_RES_TYPE_TEST~~~~~~~~~~~~~~~~~
 function AI_Load_Reset()
 {
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
+    $result = Serial_SendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
     $result="LoadBox board addr 6: "+$result+"\r\n";
     UpdateStatus($result);
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"4MSET0000000000000000$","OK",500);
+    $result = Serial_SendMilliseconds($g_LoadBox_Handle,"4MSET0000000000000000$","OK",500);
     $result="LoadBox board addr 4: "+$result+"\r\n";
     UpdateStatus($result);
-    $result = SerialSendMilliseconds($g_LoadBox_Handle,"AMSET0000000000000000$","OK",500);
+    $result = Serial_SendMilliseconds($g_LoadBox_Handle,"AMSET0000000000000000$","OK",500);
     $result="LoadBox board addr 6: "+$result+"\r\n";
     UpdateStatus($result);
     $result="DO load reset done!"+"\r\n";
@@ -855,7 +1027,7 @@ function Analog_INPUT_RES_TYPE_TEST_State1_TEST()
 	  if(!$ParallelTest)
 	  {
 	    //call set load box to state1
-	    $result = SerialSendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate1,"OK",500);
+	    $result = Serial_SendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate1,"OK",500);
 	    $result="LoadBox Set "+$AI_LoadBoxCMD_Sate1+"="+$result+"\r\n";
 	    UpdateStatus($result);
 	    //delay 200ms
@@ -975,7 +1147,7 @@ function Analog_INPUT_RES_TYPE_TEST_State2_TEST()
 	  if(!$ParallelTest)
 	  {
 	    //call set load box to state1
-	    $result = SerialSendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate2,"OK",500);
+	    $result = Serial_SendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate2,"OK",500);
 	    $result="LoadBox Set "+$AI_LoadBoxCMD_Sate2+"="+$result+"\r\n";
 	    UpdateStatus($result);
 	    //delay 200ms
@@ -1097,7 +1269,7 @@ function Analog_INPUT_VOL_TYPE_TEST_State1_TEST()
 	  if(!$ParallelTest)
 	  {
 	    //call set load box to state1
-	    $result = SerialSendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate1,"OK",500);
+	    $result = Serial_SendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate1,"OK",500);
 	    $result="LoadBox Set "+$AI_LoadBoxCMD_Sate1+"="+$result+"\r\n";
 	    UpdateStatus($result);
 	    //delay 200ms
@@ -1217,7 +1389,7 @@ function Analog_INPUT_VOL_TYPE_TEST_State2_TEST()
 	  if(!$ParallelTest)
 	  {
 	    //call set load box to state1
-	    $result = SerialSendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate2,"OK",500);
+	    $result = Serial_SendMilliseconds($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate2,"OK",500);
 	    $result="LoadBox Set "+$AI_LoadBoxCMD_Sate2+"="+$result+"\r\n";
 	    UpdateStatus($result);
 	    //delay 200ms

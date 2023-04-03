@@ -20,11 +20,13 @@
 //~ $g_Testdebug=true;  ///Global debugging flag
   $g_DO_TestDebug=false;
   $g_AI_TestDebug=false;
+  $g_PWMIN_TestDebug=false;
   
   SetFinalizeFunction("PostUUT");
   SetFailFunction("OnFail");
   SetAbortFunction("OnAbort");
   call PreUUT();
+  call WorkMode_current();
   //~ SleepMilliseconds(50);
   SetTestName("into EOL");
   call into_1001();
@@ -34,43 +36,45 @@
   call Read_Basic_SW_ver();
   call Read_Boot_SW_ver();
   
-  SetTestName("into EOL");
+  SetTestName("INTO EOL Mode");
   call into_1060();
   call into_2701();
   call into_2702();
   
-  SetTestName("Write and Check DUT_INFO");
-  call Write_PCBA_SN();
-  call Read_PCBA_SN();
-  call read_Key_Model();
-  call write_factory_mode_Start();
-  call read_factory_mode_Start();
-  call Write_Key_Model();
-  call Write_Car_Model();
-  call read_Car_Model();
-  call Eeprom_write();
-  call Eeprom_read();
-  call EMMC_write()
-  call EMMC_read();
+  //~ SetTestName("DUT_INFO");
+  //~ call Write_PCBA_SN();
+  //~ call Read_PCBA_SN();
+  //~ call read_Key_Model();
+  //~ call write_factory_mode_EOL_Start();
+  //~ call read_factory_mode_Start();
+  //~ call Write_Key_Model();
+  //~ call Write_Car_Model();
+  //~ call read_Car_Model();
+  //~ call Eeprom_write();
+  //~ call Eeprom_read();
+  //~ call EMMC_write()
+  //~ call EMMC_read();
   
-  SetTestName("CAN Check");
-  call PCAN_TEST();
-  call ICAN_TEST();
-  call UWBCAN_TEST();
-  call CAN_TEST();
+  //~ SetTestName("CAN Check");
+  //~ call PCAN_TEST();
+  //~ call ICAN_TEST();
+  //~ call UWBCAN_TEST();
+  //~ call CAN_TEST();
 
-  call Analog_INPUT_RES_TYPE_TEST_State1_TEST();
-  call Analog_INPUT_RES_TYPE_TEST_State2_TEST();
-  call Analog_INPUT_VOL_TYPE_TEST_State1_TEST();
-  call Analog_INPUT_VOL_TYPE_TEST_State2_TEST();
-  call Digital_IN_UNLOADING_TEST();
-  call Digital_IN_LOADING_TEST();
-  call Digital_OUT_TEST();
+  //~ call Analog_INPUT_RES_TYPE_TEST_State1_TEST();
+  //~ call Analog_INPUT_RES_TYPE_TEST_State2_TEST();
+  //~ call Analog_INPUT_VOL_TYPE_TEST_State1_TEST();
+  //~ call Analog_INPUT_VOL_TYPE_TEST_State2_TEST();
+  //~ call Digital_IN_UNLOADING_TEST();
+  //~ call Digital_IN_LOADING_TEST();
+  //~ call Digital_OUT_TEST();
+  
+  call PWM_IN_TEST_Duty25%();
+  call PWM_IN_TEST_Duty75%();
   //~ OperatorPrompt($DI_PIN, "OK");
   End;
   
   
- 
 
 //~ call Read_PWM_IN_By_PIN();
 
@@ -94,6 +98,7 @@ function Initialize()
   call LoadingFixConfig(); //加载夹具控制配置文件
   
   call LoadBoxOpen();
+  call LoadBoxResetSW();
   call CanHubOpen();
   
   call Fixtures_Power_Controler_Open();
@@ -121,7 +126,8 @@ function GlobalCleanup()
   call Close_ZLG_USBCANFD();  
   call CanHubClose();
   call LoadBoxClose();
-  call  Fixtures_Power_Controler_Close();
+  
+  call Fixtures_Power_Controler_Close();
   call Close_IT6722();
   call Close_DM6510();
   call RIGOL_DG5072_Close();
@@ -159,7 +165,7 @@ function PostUUT()
   SetTestName("PostUUT");
   call DUTPowerOff();
   //~ call Cylinder_Initialize();//测试完成打开夹具
-  
+  call RIGOL_DG5072_Channel_OutOff();
     if( $g_Testdebug)
   {
      OperatorPrompt("PostUUT", "OK");
@@ -179,6 +185,10 @@ function PreUUT()
   call CANHubReset();
   call PowerOn_IT6722();
   call DUTPowerOn();
+  $Set_Channel_Number	=1; 			// channel is PWM ch
+  call RIGOL_DG5072_Channel_OutOff();
+  $Set_Channel_Number	=2; 			// channel is DC ch
+  call RIGOL_DG5072_Channel_OutOff();
   SleepMilliseconds(500);
   return;
 }
@@ -211,7 +221,7 @@ function LoadDUTConfig() //初始化文件配置信息
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Test Functions//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- function into_1001()
+function into_1001()
 {
     UpdateStatus("------------into_1001------------");
     $CAN_Send_Msg = "02 10 01 CC CC CC CC CC";
@@ -228,7 +238,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $Result, "Bool", true, $Result);
     return;
 }
- function into_1003()
+function into_1003()
 {
     $CAN_Send_Msg = "02 10 03 00 00 00 00 00";
     $CAN_Rev_ExpMsg = "50 03";
@@ -241,26 +251,35 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
     return;
  }
- function Read_Basic_SW_ver()
+function Read_Basic_SW_ver()
 {  
     $CAN_Send_Msg = "03 22 A5 F0 CC CC CC CC";
     $CAN_Rev_ExpMsg = "A5 F0";
     $MeasurementName = "Basic_software_version";
-    call ZLG_CANFD_Send();//send can msg
-    SleepMilliseconds(20);
-    call ZLG_CANFD_Rev();
-	$returnStr = StringCut($CAN_Rev_Msg,"A5 F0 ",30);
-	$returnStr = HexStringToString($returnStr, " ");
-	UpdateStatus($MeasurementName);
-	UpdateStatus($returnStr);
+  $Loop=0;
+  $Result=false;
+    while(  $Result==false && $Loop<3)
+    {
+      call ZLG_CANFD_Send();//send can msg
+      SleepMilliseconds(20);
+      call ZLG_CANFD_Rev();
+      $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+      $Loop=$Loop+1;
+    }
+
+  
+    $returnStr = StringCut($CAN_Rev_Msg,"A5 F0 ",30);
+    $returnStr = HexStringToString($returnStr, " ");
+    UpdateStatus($MeasurementName);
+    UpdateStatus($returnStr);
     //~ $CAN_Rev_Msg = StringLookup("ID:07A1,data",$CAN_Rev_Msg);
-	//~ $software_version ="V30.04.000";
-	$Basic_software_version= IniFile_ReadKeyInSection($g_System_Config_File,$g_DUT_Station,"Basic_software_version");
-	$Result = StringComparison($returnStr,$Basic_software_version,"==")
+    //~ $software_version ="V30.04.000";
+    $Basic_software_version= IniFile_ReadKeyInSection($g_System_Config_File,$g_DUT_Station,"Basic_software_version");
+    $Result = StringComparison($returnStr,$Basic_software_version,"==")
     RecordMeasurementPassFail ($MeasurementName, $returnStr, "Bool",true,$Result);
   return;
  }
- function Read_Boot_SW_ver()
+function Read_Boot_SW_ver()
 {  
     $CAN_Send_Msg = "03 22 F1 80 CC CC CC CC";
     $CAN_Rev_ExpMsg = "F1 80 ";
@@ -279,7 +298,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail ($MeasurementName, $returnStr, "Bool",true,$Result);
   return;
  } 
- function into_1060()
+function into_1060()
 {
     $CAN_Send_Msg = "02 10 60 CC CC CC CC CC";
     $CAN_Rev_ExpMsg = "50 60";
@@ -295,7 +314,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
 	return;
  }
- function into_2701()
+function into_2701()
 {
   	//所有测试前,一定要进入EOL测试模式.
     $CAN_Send_Msg = "02 27 01 CC CC CC CC CC";
@@ -312,7 +331,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
 	return;
   }
- function into_2702()
+function into_2702()
 {
   	//所有测试前,一定要进入EOL测试模式.
     $CAN_Send_Msg = "06 27 02 00 01 02 03 CC";
@@ -329,7 +348,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
 	return;
   }
- function Write_PCBA_SN()
+function Write_PCBA_SN()
 {	
     UpdateStatus("=>>>>>>>>>>>>>>>>>> Write PCBA SN>>>>>>>>>>>>>>>");
     $SN = "31 32 33 34 35 36 37 38 39 30 31 32 33 34 35 36";
@@ -352,7 +371,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);	
     return;
 }
- function Read_PCBA_SN()
+function Read_PCBA_SN()
  {
 	UpdateStatus("=>>>>>>>>>>>>>>>>>> Read PCBA SN>>>>>>>>>>>>>>>");
 	//产品序列号只需在程序烧录台写入即可，FCT/EOL不需写入
@@ -367,8 +386,8 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
 	return;
  }
- function Soft_restart()
- {
+function Soft_restart()
+{
     SleepMilliseconds(500);
     call into_1001();
     call into_1003();
@@ -378,7 +397,7 @@ function LoadDUTConfig() //初始化文件配置信息
    SleepMilliseconds(500);
     return;
  }
- function read_factory_mode_Start()
+function read_factory_mode_Start()
  {
    UpdateStatus("=>>>>>>>>>>>>>>>>>> read_factory_mode_Start>>>>>>>>>>>>>>>"); 
    //~ call  Soft_restart(); 
@@ -395,7 +414,7 @@ function LoadDUTConfig() //初始化文件配置信息
     //SleepMilliseconds(1000);
    return;
  }
- function read_factory_mode_end()
+function read_factory_mode_end()
  {
     $CAN_Send_Msg = "03 22 A5 F2 CC CC CC CC";
     $CAN_Rev_ExpMsg = "6E A5 F2 1F";
@@ -416,8 +435,8 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
     return;
  }
- function write_factory_mode_EOL_Start()
- {
+function write_factory_mode_EOL_Start()
+{
   // 只需在FCT和EOL工位写入 
   // 1,FCT: 开始测试写入值1F，并读取检查，测试完成后写入值1E，并读取检查; 
   // 2,EOL: 开始测试写入值1D，并读取检查，测试完成后写入值10，并读取检查; 
@@ -442,7 +461,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
     return;
  }
- function write_factory_mode_end()
+function write_factory_mode_end()
  {
     // 只需在FCT和EOL工位写入 
     // 1,FCT: 开始测试写入值1F，并读取检查，测试完成后写入值1E，并读取检查; 
@@ -468,7 +487,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
     return;
  }
- function Write_Car_Model()
+function Write_Car_Model()
  {
     // 	只需在EOL工位写入 1,EOL: 写入值0x05，并读取检查; 
     //	备注: 读取检查前需要断电重启或者软重启(11 01);
@@ -492,7 +511,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
     return;
  }
- function read_Car_Model()
+function read_Car_Model()
  {
    UpdateStatus("====== write_Car_Model 车辆模式=========");
     $CAN_Send_Msg = "03 22 01 00 CC CC CC CC";
@@ -514,7 +533,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
     return;
  }
- function Write_Key_Model()
+function Write_Key_Model()
  {
     //~ 只需在EOL台写入，其他不需要 
     //~ 1,该参数从1开始(假如是第1个产品)，然后实行累加到65535(假如是第65535个产品)后又重新从1开 始; 
@@ -531,7 +550,7 @@ function LoadDUTConfig() //初始化文件配置信息
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
 	return;
  }
- function read_Key_Model()
+function read_Key_Model()
  {
 	// 	只需在EOL工位写入 1,EOL: 写入值0x05，并读取检查; 备注: 读取检查前需要断电重启或者软重启(11 01);
 	$CAN_Send_Msg = "03 22 01 00 CC CC CC CC";
@@ -546,7 +565,7 @@ function LoadDUTConfig() //初始化文件配置信息
 	return;
  } 
 
- function Write_ECU_offline_date()
+function Write_ECU_offline_date()
  {
    UpdateStatus("=>>>>>>>>>>>>>>>>>> Write_ECU_offline_date>>>>>>>>>>>>>>>");
     //只需在EOL台写入，其他不需要 日期信息是BCD码，如20221016则为0x20 0x22 0x10 0x16
@@ -583,11 +602,8 @@ function Read_ECU_offline_date()
  }
 
  
-
-
-
  
- function ALl_LIN_Mode_On()
+function ALl_LIN_Mode_On()
 {
   
     UpdateStatus("=>>>>>>>>>>>>>>>>>> ALl_LIN_Mode_On>>>>>>>>>>>>>>>");
@@ -634,7 +650,7 @@ function LIN_Mode_2_Result()
     return;
 }
 
- function LIN_Mode_3_Result()
+function LIN_Mode_3_Result()
 {
   
     UpdateStatus("=>>>>>>>>>>>>>>>>>> LIN_Mode_3_Result>>>>>>>>>>>>>>>");
@@ -665,12 +681,7 @@ function LIN_Mode_4_Result()
     return;
 }
  
- 
- 
-
- 
-
- function LIN_Mode_5_Result()
+function LIN_Mode_5_Result()
 {
   
     UpdateStatus("=>>>>>>>>>>>>>>>>>> LIN_Mode_5_Result>>>>>>>>>>>>>>>");
@@ -700,11 +711,6 @@ function LIN_Mode_6_Result()
     RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
     return;
 }
- 
- 
-
-
-
 
 function Eeprom_write()
 {
@@ -721,7 +727,7 @@ function Eeprom_write()
   return;
 }
 
- function Eeprom_read()
+function Eeprom_read()
 {
   UpdateStatus("=>>>>>>>>>>>>>>>>>> Eeprom_read>>>>>>>>>>>>>>>");
   $CAN_Send_Msg = "04 31 03 C0 86 CC CC CC";
@@ -736,12 +742,7 @@ function Eeprom_write()
   return;
 }
 
-
-
-
-
-
- function EMMC_write()
+function EMMC_write()
 {
   UpdateStatus("=>>>>>>>>>>>>>>>>>> EMMC_write>>>>>>>>>>>>>>>");
   $CAN_Send_Msg = "05 31 01 C0 87 0F CC CC";
@@ -756,7 +757,7 @@ function Eeprom_write()
   return;
 }
 
- function EMMC_read()
+function EMMC_read()
 {
   UpdateStatus("=>>>>>>>>>>>>>>>>>> EMMC_read>>>>>>>>>>>>>>>");
   $CAN_Send_Msg = "04 31 03 C0 87 CC CC CC";
@@ -771,8 +772,7 @@ function Eeprom_write()
   return;
 }
 
-
- function Dac_Control()
+function Dac_Control()
 {
   
   UpdateStatus("=>>>>>>>>>>>>>>>>>> Dac_Control>>>>>>>>>>>>>>>");
@@ -789,8 +789,7 @@ function Eeprom_write()
   return;
 }
 
-
- function RKE_Control()
+function RKE_Control()
 {
   //	function	startbit
   //	低频通道1    	01
@@ -811,15 +810,16 @@ function Eeprom_write()
   RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
   return;
 }
-
-
-
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions Sub CAN ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function CanHubOpen()
 {
   $g_Can_Hub_Port = ReadIniFile($g_System_Config_File,"HW_Config","Can_Hub_Port");
   UpdateStatus($g_Can_Hub_Port);
-  $g_CanHub_Handle = SerialOpen($g_Can_Hub_Port,19200,8,"N",1);
+  ($g_CanHub_Handle,$result) = Serial_OpenBool($g_Can_Hub_Port,19200,8,"N",1);
+  if(!$result)
+  {
+    Fail("Can_Hub Open Fail");
+  }
   return;
 }
 function CanHubClose()
@@ -827,13 +827,15 @@ function CanHubClose()
    SerialClose($g_CanHub_Handle);
   return;
 }
-
-
 function PCAN_TEST()
 {
   //switch to PCAN_TEST
-  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS8]","Channel 8 on",500);
-  UpdateStatus($result);
+ ($returned,$result)=Serial_SendMillisecondsBool ($g_CanHub_Handle,"[1CANS8]","Channel 8 on",500);
+  if($result ==false)
+  {
+    UpdateStatus($result);
+    Fail("CAN SW Channel 8 on FAIL");
+  }
   SleepMilliseconds(500);
   call ZLG_CANFD_CH2_Rev();
   UpdateStatus($CAN_Rev_Msg);
@@ -843,8 +845,12 @@ function PCAN_TEST()
 function ICAN_TEST()
 {
   //switch to ICAN_TEST
-  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS7]","Channel 7 on",500);
-  UpdateStatus($result);
+  ($returned,$result) = Serial_SendMillisecondsBool($g_CanHub_Handle,"[1CANS7]","Channel 7 on",500);
+    if($result ==false)
+  {
+    UpdateStatus($result);
+    Fail("CAN SW Channel 7 on FAIL");
+  }
   SleepMilliseconds(500);
   call ZLG_CANFD_CH2_Rev();
   UpdateStatus($CAN_Rev_Msg);
@@ -854,7 +860,12 @@ function ICAN_TEST()
 function UWBCAN_TEST()
 {
   //switch to UWBCAN_TEST
-  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS6]","Channel 6 on",500);
+  ($returned,$result) = Serial_SendMillisecondsBool($g_CanHub_Handle,"[1CANS6]","Channel 6 on",500);
+  if($result ==false)
+  {
+    UpdateStatus($result);
+    Fail("CAN SW Channel 6 on FAIL");
+  }
   UpdateStatus($result);
   SleepMilliseconds(500);
   call ZLG_CANFD_CH2_Rev();
@@ -865,7 +876,12 @@ function UWBCAN_TEST()
 function CAN_TEST()
 {
   //switch to UWBCAN_TEST
-  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS5]","Channel 5 on",500);
+  ($returned,$result) = Serial_SendMillisecondsBool($g_CanHub_Handle,"[1CANS5]","Channel 5 on",500);
+    if($result ==false)
+  {
+    UpdateStatus($result);
+    Fail("CAN SW Channel 5 on FAIL");
+  }
   UpdateStatus($result);
   SleepMilliseconds(500);
   call ZLG_CANFD_CH2_Rev();
@@ -873,19 +889,21 @@ function CAN_TEST()
   call CANHubReset();
   return;
 }
-
 function CANHubReset()
 {
   //CAN Hub Reset this can hub addr is 0x1
-  $result = SerialSendMilliseconds($g_CanHub_Handle,"[1CANS0]","ALL Channel off",500);
-  UpdateStatus($result);
+  ($returned,$result) = Serial_SendMillisecondsBool($g_CanHub_Handle,"[1CANS0]","ALL Channel off",500);
+    if($result ==false)
+  {
+    UpdateStatus($result);
+    Fail("[1CANS0] ,ALL Channel off FAIL");
+  }
   return;
 }
 
-
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions DAQ 6509~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- function DUTPowerOn()
- {
+function DUTPowerOn()
+{
 //J2 PIN-1 J_DI_KL15_BackUp_HS to VBAT+
 NI_DAQmx_Write_Dig_Port_Line($DeviceName, "port0", "line0", "1", $PowerTask);
 //J1 PIN-6 J_DI_BrakeSw1_HS to VBAT+
@@ -893,8 +911,8 @@ NI_DAQmx_Write_Dig_Port_Line($DeviceName, "port0", "line1", "1", $PowerTask);
   return;
 }
 
- function DUTPowerOff()
- {
+function DUTPowerOff()
+{
 //J2 PIN-1 J_DI_KL15_BackUp_HS to VBAT+
 NI_DAQmx_Write_Dig_Port_Line($DeviceName, "port0", "line0", "0", $PowerTask);
 //J1 PIN-6 J_DI_BrakeSw1_HS to VBAT+
@@ -909,18 +927,21 @@ function Init_DAQ6509()
   NI_DAQmx_Initialize();
   NI_DAQmx_ResetDevice($DeviceName);
   NI_DAQmx_WriteDIOPort($DeviceName,"port0","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port1","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port2","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port3","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port4","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port5","00",$PowerTask);
   return;
 }
-
-
-
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions LoadBox ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 function LoadBoxOpen()
 {
   $g_LoadBox_Port = ReadIniFile($g_System_Config_File,"HW_Config","LoadBoxPort");
   UpdateStatus($g_LoadBox_Port);
-  $g_LoadBox_Handle = SerialOpen($g_LoadBox_Port,19200,8,"N",1);
+ $g_LoadBox_Handle = Serial_Open($g_LoadBox_Port,19200,8,"N",1);
+ //~ $g_LoadBox_Handle
   return;
 }
 
@@ -932,49 +953,83 @@ function LoadBoxClose()
 function LoadBoxResetSW()
 {
     //Board 1 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"4MSET0000000000000000$","OK",500);
-  $result="Board 1 Reset"+$result;
-  UpdateStatus($result);
-     //Board 2 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"5MSET0000000000000000$","OK",500);
-   $result="Board 2 Reset"+$result;
-  UpdateStatus($result);  
-     //Board 3 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
-  $result="Board 3 Reset"+$result;
-  UpdateStatus($result);
-     //Board 4 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"7MSET0000000000000000$","OK",500);
-$result="Board 4 Reset"+$result; 
-  UpdateStatus($result); 
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"4MSET0000000000000000$","OK",500);
+  $returned="Board 1 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  }
+  //Board 2 Reset
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"5MSET0000000000000000$","OK",500);
+  $returned="Board 2 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  }
+  //Board 3 Reset
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"6MSET0000000000000000$","OK",500);
+  $returned="Board 3 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  }
+  //Board 4 Reset
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"7MSET0000000000000000$","OK",500);
+  $returned="Board 4 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  }
      //Board 5 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"8MSET0000000000000000$","OK",500);
-  $result="Board 5 Reset"+$result;
-  UpdateStatus($result);
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"8MSET0000000000000000$","OK",500);
+  $returned="Board 5 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  }
      //Board 6 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"9MSET0000000000000000$","OK",500);
-$result="Board 6 Reset"+$result; 
- UpdateStatus($result); 
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"9MSET0000000000000000$","OK",500);
+  $returned="Board 6 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  } 
      //Board 7 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"AMSET0000000000000000$","OK",500);
-  $result="Board 7 Reset"+$result;
-  UpdateStatus($result);
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"AMSET0000000000000000$","OK",500);
+  $returned="Board 7 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  }
    //Board 8 Reset
-  $result = SerialSendMilliseconds($g_LoadBox_Handle,"BMSET0000000000000000$","OK",500);
-  $result="Board 8 Reset"+$result;
-  UpdateStatus($result); 
+  ($returned,$result )= Serial_SendMillisecondsBool($g_LoadBox_Handle,"BMSET0000000000000000$","OK",500);
+  $returned="Board 8 Reset"+$returned;
+  UpdateStatus($returned);
+  if(!$result)
+  {
+    Fail("LoadBox Reset FAIL");
+  }
 
   return;
 }
-
-
-
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions Fixture Power ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function Fixtures_Power_Controler_Open()
 {
   $g_Fixtures_Power_Port = ReadIniFile($g_System_Config_File,"HW_Config","Fixtures_Power_Port");
   UpdateStatus($g_Fixtures_Power_Port);
-  $g_Fixtures_Power_Handle = SerialOpen($g_Fixtures_Power_Port,9600,8,"N",1);
+  ( $g_Fixtures_Power_Handle, $success) = Serial_OpenBool($g_Fixtures_Power_Port,9600,8,"N",1);
+  if(!$success)
+  {
+    UpdateStatus($result);
+    Fail("Open Fixtures_Power_Port FAILED");
+  }
   return;
 }
 function Fixtures_Power_Controler_Close()
@@ -986,22 +1041,30 @@ function Fixtures_Power_Controler_Close()
 function Fixtures_PowerOn()
 {
   
-  //Set AC Power On
-  $result = SerialSendMilliseconds($g_Fixtures_Power_Handle,"#DCOPON$","PMU DC OUTPUT ON",500);
-  UpdateStatus($result);
-  //Set 24V Power On
-  $result = SerialSendMilliseconds($g_Fixtures_Power_Handle,"#PWR1ON$","24V ON",500);
-  UpdateStatus($result);
-  //Set 12V Power On
-  $result = SerialSendMilliseconds($g_Fixtures_Power_Handle,"#PWR2ON$","5V ON",500);
-  UpdateStatus($result);
-  //Set 5V Power On
-  $result = SerialSendMilliseconds($g_Fixtures_Power_Handle,"#PWR3ON$","12V ON",500);
-  UpdateStatus($result);
+    //Set DC Power On
+    ($returned,$result) = Serial_SendMillisecondsBool($g_Fixtures_Power_Handle,"#DCOPON$","PMU DC OUTPUT ON",500);
+    if(!$result)
+    {
+	Fail("PMU DC OUTPUT ON FAIL");
+    }
+    UpdateStatus($returned);
+
   return;
 }
 
+function Fixtures_PowerOff()
+{
+  
+    //Set DC Power Off
+    ($returned,$result) = Serial_SendMillisecondsBool($g_Fixtures_Power_Handle,"#DCOPOFF$","",500);
+    if(!$result)
+    {
+	Fail("PMU DC OUTPUT ON FAIL");
+    }
+    UpdateStatus($returned);
 
+  return;
+}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Scan and check the bar code ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function VerifySerialNumber()
 {
@@ -1020,7 +1083,6 @@ function VerifySerialNumber()
   SetSerialNumberField($SerialNumber);
   return;
 }
-
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions IT6722  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function Init_IT6722()
 {
@@ -1029,7 +1091,6 @@ function Init_IT6722()
   UpdateStatus($g_IT6722_Port);
   $timeOut = 2000;          // Time out = 2 seconds.
   $g_IT6722_handle = IviVISA_Open($g_IT6722_Port, $timeOut);
-
   IviVISA_Write($g_IT6722_handle, "*IDN?\n");
   SleepMilliseconds(100);
   $Response =  IviVISA_Read($g_IT6722_handle);
@@ -1061,3 +1122,65 @@ function PowerOn_IT6722()
   return;
 }
 
+
+function WorkMode_current()
+{
+  UpdateStatus("~~~~~~~~~~~~~ WorkMode_Curren Start ~~~~~~~~~~");
+  SetTestName("");
+  IviVISA_Write($g_IT6722_handle, "MEASure:CURRent?\n");
+  SleepMilliseconds(100);
+  $Response =  IviVISA_Read($g_IT6722_handle);
+  UpdateStatus($Response);  
+  $measureName="WorkMode_Curren";
+  RecordMeasurementWithLimits($measureName, $Response, "A", true, 0.3, 0.4, true);
+   UpdateStatus("~~~~~~~~~~~~~ WorkMode_Curren End ~~~~~~~~~~");
+  return;
+}
+
+
+//*************************************************************************//
+//**********************Debug view TXT function       ***********************//
+//*************************************************************************//
+
+//*************************************************************************//
+// Main Txt Process Display
+// Input:  $View_TXT_String  ： Main  String Input
+function Method_View_TXT_Mode_Main()
+{
+    UpdateStatus("============================================================");   // 60 "="
+    UpdateStatus("============================================================");   // 60 "="
+    $Display=".......>>>>>>>>>>>>    "+$View_TXT_String+"    <<<<<<<<<<<<.......";
+    UpdateStatus($Display);
+    return;
+}
+
+//*************************************************************************//
+// Main Txt Process Display End mark
+function Method_View_TXT_Main_End()
+{
+    UpdateStatus("============================================================\r\n"); // 60 "="
+    return;
+}
+
+//*************************************************************************//
+//Step Class 1 Txt Process Display
+// Input:  $View_TXT_String  ：Step_1 main
+function Method_View_TXT_Step_Main()
+{
+    UpdateStatus("\r\n******************************************************************************************"); // 80 "*"
+    UpdateStatus("================================================================================");   // 80 "="
+    $Display="    ====---->>>>>>>>Main Test Step:    "+$View_TXT_String+"    <<<<<<<<----====    \r\n";
+    UpdateStatus($Display);
+    return;
+}
+
+//*************************************************************************//
+//Step Class 1 Txt Process Display End
+function Method_View_TXT_Step_Main_End()
+{
+    UpdateStatus("******************************************************************************************\r\n"); // 80 "*"
+    return;
+}
+
+//*************************************************************************//
+//Step Class Sub2 Txt Process Dis
