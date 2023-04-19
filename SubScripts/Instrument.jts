@@ -97,6 +97,7 @@ function IT6722_Current()
 	//~ $Current_LSL=0
 	//~ $measureName
   UpdateStatus("~~~~~~~~~~~~~ IT6722_Current TEST ~~~~~~~~~~");
+  SetTestName("");
   NIVISA_Write($g_IT6722_handle, "MEASure:CURRent?\n");
   SleepMilliseconds(100);
   $Response =  NIVISA_Read($g_IT6722_handle);
@@ -363,30 +364,14 @@ function Init_DM6510()
       UpdateStatus($DAQ6510_Port);
       $timeOut = 2000;          // Time out = 2 seconds.
       $g_DAQ6510_Handle = NIVISA_Open($DAQ6510_Port,$timeOut);
-     $success= NIVISA_WriteBool($g_DAQ6510_Handle, "*IDN?\r\n");
-      if(!$success)
-      {
-	Abort("DAQ6510 Write Error");
-      }
+      NIVISA_Write($g_DAQ6510_Handle, "*IDN?\r\n");
       $DMM6500_ReturnString = NIVISA_Read($g_DAQ6510_Handle);
       UpdateStatus($DMM6500_ReturnString);
-      $success=NIVISA_WriteBool($g_DAQ6510_Handle, "*RST\r\n");
-      if(!$success)
-      {
-	Abort("DAQ6510 Write Error");
-      }
+      NIVISA_Write($g_DAQ6510_Handle, "*RST\r\n");
       SleepMilliseconds(50);
-     $success= NIVISA_WriteBool($g_DAQ6510_Handle, "*CLS");
-      if(!$success)
-      {
-	Abort("DAQ6510 Write Error");
-      }
+      NIVISA_Write($g_DAQ6510_Handle, "*CLS");
       SleepMilliseconds(50);
       $g_DAQ6510_Read = ":READ?\r\n";
-      if(!$success)
-      {
-	Abort("DAQ6510 Write Error");
-      }
       UpdateStatus($g_DAQ6510_Handle);
       UpdateStatus("===================End Init DM6500=====================");
       return;
@@ -461,27 +446,42 @@ function Keysight6510_MeasureDCVoltage()
     
     UpdateStatus("----------------------------- Keysight_DMM_MeasureVoltage ------------------------------"); 
     //SENS:FUNC 'VOLT', (@113)\r\n
-  NIVISA_WriteBool($g_DAQ6510_Handle, "*CLS");
     $Set_Voltage_Meas = "SENS:FUNC 'VOLT', (@" + $Channel + ")\r\n";
   //:DISPlay:VOLT:DC:DIGits 4
     //~ ":SENS:FUNC ‘VOLTage’ ,(@"+ $Channel +");:SENS:VOLTage:RANG:AUTO ON ,(@"+ $Channel +")\r\n"
   
-    NIVISA_WriteBool($g_DAQ6510_Handle,$Set_Voltage_Meas); 
+    NIVISA_Write($g_DAQ6510_Handle,$Set_Voltage_Meas); 
   //:DISPlay:VOLT:DC:DIGits 4
    
-   NIVISA_WriteBool($g_DAQ6510_Handle,":DISPlay:VOLT:DC:DIGits 4\n"); 
+   NIVISA_Write($g_DAQ6510_Handle,":DISPlay:VOLT:DC:DIGits 4\n"); 
    //ROUT:CLOS (@113)\r\n
     $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
-    NIVISA_WriteBool($g_DAQ6510_Handle,$Close_Channel); 
+    NIVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
     //SENS:VOLT:RANG 100, (@113)\r\n
     //~ $Rang = "10";
     $DAQ6510_VOLT_RANG = "SENS:VOLT:RANG " +$Rang + ", (@" + $Channel + ")\r\n";
-    NIVISA_WriteBool($g_DAQ6510_Handle,$DAQ6510_VOLT_RANG); 
+    NIVISA_Write($g_DAQ6510_Handle,$DAQ6510_VOLT_RANG); 
     
-    NIVISA_WriteBool($g_DAQ6510_Handle,$g_DAQ6510_Read); 
-    $DMMRead_Vol = NIVISA_Read($g_DAQ6510_Handle);
-    $temp="Vol="+$DMMRead_Vol;
-    UpdateStatus($temp);
+    $Meas_flag = false;
+    $Meas_loop = 0;
+    while(!$Meas_flag && $Meas_loop < 3)
+    {
+	NIVISA_Write($g_DAQ6510_Handle,$g_DAQ6510_Read); 
+	$DMMRead_Vol = NIVISA_Read($g_DAQ6510_Handle);
+	//~ $DMMRead_Vol = Abs($DMMRead_Vol); 
+      
+	//~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+	$temp="Vol="+$DMMRead_Vol;
+	UpdateStatus($temp);
+	$lowerLimit = CastVariable("Float",$lowerLimit);
+	$upperLimit = CastVariable("Float",$upperLimit);
+	$Meas_flag =  ($DMMRead_Vol >= $lowerLimit) && ($DMMRead_Vol <= $upperLimit);
+	if(!$Meas_flag)
+	{
+	    SleepMilliseconds(20);
+	}
+	$Meas_loop = $Meas_loop + 1;
+    }
     return; 
   }
 
@@ -581,30 +581,47 @@ function Keysight6510_MeasureFreq()
     
     UpdateStatus("----------------------------- Keysight6510_MeasureFreq ------------------------------"); 
     //:SENS:FUNC "FREQuency" ,(@102)\r\n
-    NIVISA_WriteBool($g_DAQ6510_Handle, "*CLS");
+    NIVISA_Write($g_DAQ6510_Handle, "*CLS");
     $Set_FREQ_Meas = ":SENS:FUNC 'FREQuency',(@"+$Channel+")\n";
-
-    ($VISA_Write_Result)=NIVISA_WriteBool($g_DAQ6510_Handle,$Set_FREQ_Meas); 
-    UpdateStatus($VISA_Write_Result);
   
+    UpdateStatus($Set_FREQ_Meas);
+    NIVISA_Write($g_DAQ6510_Handle,$Set_FREQ_Meas); 
+  //:SENS:FREQuency:THR:RANG 10.000000;:SENS:FREQuency:THR:RANG:AUTO OFF
+    //~ NIVISA_Write($g_DAQ6510_Handle,":SENS:FREQuency:THR:RANG 10.000000;:SENS:FREQuency:THR:RANG:AUTO OFF\n"); 
+    //ROUT:CLOS (@113)\r\n
     $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\n";
-    ($VISA_Write_Result)= NIVISA_WriteBool($g_DAQ6510_Handle,$Close_Channel); 
-    UpdateStatus($VISA_Write_Result);
-    SleepMilliseconds(100);
-    ($VISA_Write_Result)= NIVISA_WriteBool($g_DAQ6510_Handle,":READ?\n"); 
-    UpdateStatus($VISA_Write_Result);
-    SleepMilliseconds(100);
-    $success=false;
-    $VISA_READ_LOOP=0;
-    while($success==false && $VISA_READ_LOOP<10)
+    NIVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+    SleepMilliseconds(500);
+    //~ OperatorPrompt("Set_FREQ_Meas","OK");
+    $Meas_flag = false;
+    $Meas_loop = 0;
+    //~ $g_DAQ6510_Read = ":READ?\r\n";
+    while(!$Meas_flag && $Meas_loop < 3)
     {
-          ($DMMRead_FREQ,$success) =  NIVISA_ReadBool($g_DAQ6510_Handle);
+	NIVISA_Write($g_DAQ6510_Handle,":READ?\n"); 
+	SleepMilliseconds(100);
+	$success=false;
+	($DMMRead_FREQ,$success) =  NIVISA_ReadBool($g_DAQ6510_Handle);
+	if($success)
+	{
+	  //~ $DMMRead_Vol = Round($DMMRead_Vol,3);
 	  UpdateStatus($DMMRead_FREQ);
-	UpdateStatus($success);
-	  $VISA_READ_LOOP=$VISA_READ_LOOP+1;
-	  SleepMilliseconds(50);
+	  $lowerLimit = CastVariable("Float",$lowerLimit);
+	  $upperLimit = CastVariable("Float",$upperLimit);
+	  $Meas_flag =  ($DMMRead_FREQ >= $lowerLimit) && ($DMMRead_FREQ <= $upperLimit);
+	  if(!$Meas_flag)
+	  {
+	      SleepMilliseconds(20);
+	  }
+	}
+	$Meas_loop = $Meas_loop + 1;
     }
+   
     $Open_Channel = "ROUT:OPEN (@" + $Channel + ")\r\n";
     NIVISA_Write($g_DAQ6510_Handle,$Open_Channel); 
     return; 
 }
+
+
+
+

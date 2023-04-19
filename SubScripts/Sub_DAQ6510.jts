@@ -46,7 +46,7 @@ function Keysight6510_MeasureCurrent()
 	  // 3,$Curr_Range
   //Output:
 	  //1,$DMMRead_Curr
-  
+
   UpdateStatus("----------------------------- Keysight6510_MeasureCurrent ------------------------------");
   //SENS:FUNC 'CURR:DC', (@121)\r\n
   $Set_Current_Meas = "SENS:FUNC 'CURR:DC', (@" + $Channel + ")\r\n";
@@ -95,9 +95,14 @@ function Keysight6510_MeasureDCVoltage()
     UpdateStatus("----------------------------- Keysight_DMM_MeasureVoltage ------------------------------"); 
     //SENS:FUNC 'VOLT', (@113)\r\n
     $Set_Voltage_Meas = "SENS:FUNC 'VOLT', (@" + $Channel + ")\r\n";
-    //":SENS:FUNC ‘VOLTage’ ,(@"+ $Channel +");:SENS:VOLTage:RANG:AUTO ON ,(@"+ $Channel +")\r\n"
+  //:DISPlay:VOLT:DC:DIGits 4
+    //~ ":SENS:FUNC ‘VOLTage’ ,(@"+ $Channel +");:SENS:VOLTage:RANG:AUTO ON ,(@"+ $Channel +")\r\n"
+  
     IviVISA_Write($g_DAQ6510_Handle,$Set_Voltage_Meas); 
-    //ROUT:CLOS (@113)\r\n
+  //:DISPlay:VOLT:DC:DIGits 4
+   
+   IviVISA_Write($g_DAQ6510_Handle,":DISPlay:VOLT:DC:DIGits 4\n"); 
+   //ROUT:CLOS (@113)\r\n
     $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
     IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
     //SENS:VOLT:RANG 100, (@113)\r\n
@@ -111,12 +116,13 @@ function Keysight6510_MeasureDCVoltage()
     {
 	IviVISA_Write($g_DAQ6510_Handle,$g_DAQ6510_Read); 
 	$DMMRead_Vol = IviVISA_Read($g_DAQ6510_Handle);
-	$DMMRead_Vol = Abs($DMMRead_Vol); 
+	//~ $DMMRead_Vol = Abs($DMMRead_Vol); 
       
 	//~ $DMMRead_Vol = Round($DMMRead_Vol,3);
 	$temp="Vol="+$DMMRead_Vol;
 	UpdateStatus($temp);
-	
+	$lowerLimit = CastVariable("Float",$lowerLimit);
+	$upperLimit = CastVariable("Float",$upperLimit);
 	$Meas_flag =  ($DMMRead_Vol >= $lowerLimit) && ($DMMRead_Vol <= $upperLimit);
 	if(!$Meas_flag)
 	{
@@ -216,42 +222,105 @@ function Keysight6510_MeasureResistance()
 function Keysight6510_MeasureFreq()
 {
   //input:
-	  //1,		$g_DAQ6510_Handle
+	  //1,	$g_DAQ6510_Handle
 	  //2,	$Channel
   //Output:
 	  //1,		$DMMRead_FREQ
     
-    UpdateStatus("----------------------------- Keysight6510_MeasureResistance ------------------------------"); 
+    UpdateStatus("----------------------------- Keysight6510_MeasureFreq ------------------------------"); 
     //:SENS:FUNC "FREQuency" ,(@102)\r\n
-    $Set_Resistance_Meas = ":SENS:FUNC 'FREQuency' ,(@"+$Channel+")\r\n";
-    IviVISA_Write($g_DAQ6510_Handle,$Set_FREQ_Meas); 
+    IviVISA_Write($g_DAQ6510_Handle, "*CLS");
+    $Set_FREQ_Meas = ":SENS:FUNC 'FREQuency',(@"+$Channel+")\n";
   
+    UpdateStatus($Set_FREQ_Meas);
+    IviVISA_Write($g_DAQ6510_Handle,$Set_FREQ_Meas); 
+  //:SENS:FREQuency:THR:RANG 10.000000;:SENS:FREQuency:THR:RANG:AUTO OFF
+    //~ IviVISA_Write($g_DAQ6510_Handle,":SENS:FREQuency:THR:RANG 10.000000;:SENS:FREQuency:THR:RANG:AUTO OFF\n"); 
     //ROUT:CLOS (@113)\r\n
-    $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+    $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\n";
     IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
-
+    SleepMilliseconds(500);
+    //~ OperatorPrompt("Set_FREQ_Meas","OK");
     $Meas_flag = false;
     $Meas_loop = 0;
     //~ $g_DAQ6510_Read = ":READ?\r\n";
-    while(!$Meas_flag && $Meas_loop < 1)
+    while(!$Meas_flag && $Meas_loop < 3)
     {
-	IviVISA_Write($g_DAQ6510_Handle,":READ?\r\n"); 
-	$DMMRead_Res = IviVISA_Read($g_DAQ6510_Handle);
-      
-	//~ $DMMRead_Vol = Round($DMMRead_Vol,3);
-	UpdateStatus($DMMRead_FREQ);
-	$Meas_flag =  ($DMMRead_FREQ >= $lowerLimit) && ($DMMRead_FREQ <= $upperLimit);
-	if(!$Meas_flag)
+	IviVISA_Write($g_DAQ6510_Handle,":READ?\n"); 
+	SleepMilliseconds(200);
+	$success=false;
+	($DMMRead_FREQ,$success) =  IviVISA_ReadBool($g_DAQ6510_Handle);
+	if($success)
 	{
-	    SleepMilliseconds(300);
+	  //~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+	  UpdateStatus($DMMRead_FREQ);
+	  $lowerLimit = CastVariable("Float",$lowerLimit);
+	  $upperLimit = CastVariable("Float",$upperLimit);
+	  $Meas_flag =  ($DMMRead_FREQ >= $lowerLimit) && ($DMMRead_FREQ <= $upperLimit);
+	  if(!$Meas_flag)
+	  {
+	      SleepMilliseconds(20);
+	  }
 	}
 	$Meas_loop = $Meas_loop + 1;
     }
+   
     $Open_Channel = "ROUT:OPEN (@" + $Channel + ")\r\n";
     IviVISA_Write($g_DAQ6510_Handle,$Open_Channel); 
     return; 
 }
 
+
+function Keysight6510_MeasureFreq_2()
+{
+  //input:
+	  //1,	$g_DAQ6510_Handle
+	  //2,	$Channel
+  //Output:
+	  //1,		$DMMRead_FREQ
+    
+    UpdateStatus("----------------------------- Keysight6510_MeasureFreq ------------------------------"); 
+    //:SENS:FUNC "FREQuency" ,(@102)\r\n
+    IviVISA_Write($g_DAQ6510_Handle, "*CLS");
+    $Set_FREQ_Meas = ":SENS:FUNC 'FREQuency',(@"+$Channel+")\n";
+  
+    UpdateStatus($Set_FREQ_Meas);
+    IviVISA_Write($g_DAQ6510_Handle,$Set_FREQ_Meas); 
+  //:SENS:FREQuency:THR:RANG 10.000000;:SENS:FREQuency:THR:RANG:AUTO OFF
+    //~ IviVISA_Write($g_DAQ6510_Handle,":SENS:FREQuency:THR:RANG 10.000000;:SENS:FREQuency:THR:RANG:AUTO OFF\n"); 
+    //ROUT:CLOS (@113)\r\n
+    $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\n";
+    IviVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+    SleepMilliseconds(500);
+    //~ OperatorPrompt("Set_FREQ_Meas","OK");
+    $Meas_flag = false;
+    $Meas_loop = 0;
+    //~ $g_DAQ6510_Read = ":READ?\r\n";
+    while(!$Meas_flag && $Meas_loop < 3)
+    {
+	IviVISA_Write($g_DAQ6510_Handle,":READ?\n"); 
+	SleepMilliseconds(200);
+	$success=false;
+	($DMMRead_FREQ,$success) =  IviVISA_ReadBool($g_DAQ6510_Handle);
+	if($success)
+	{
+	  //~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+	  UpdateStatus($DMMRead_FREQ);
+	  $lowerLimit = CastVariable("Float",$lowerLimit);
+	  $upperLimit = CastVariable("Float",$upperLimit);
+	  $Meas_flag =  ($DMMRead_FREQ >= $lowerLimit) && ($DMMRead_FREQ <= $upperLimit);
+	  if(!$Meas_flag)
+	  {
+	      SleepMilliseconds(20);
+	  }
+	}
+	$Meas_loop = $Meas_loop + 1;
+    }
+   
+    $Open_Channel = "ROUT:OPEN (@" + $Channel + ")\r\n";
+    IviVISA_Write($g_DAQ6510_Handle,$Open_Channel); 
+    return; 
+}
 
 
 
