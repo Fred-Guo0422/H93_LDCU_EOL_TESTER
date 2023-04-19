@@ -546,28 +546,12 @@ function Digital_OUT_TEST()
     call DUT_ALL_DO_Off();     // 关闭产品DO输出
     call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
    // 开始循环测试
-  
     $rows_Loop =0;
     //~ OperatorPrompt("开始循环测试", "OK");
-    
     while($rows_Loop < $rows_Length)
   {
 	// Loading Config info
-	$rowArray 					= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
-	$DO_PIN					=Array1DGetValue($rowArray ,0);
-	$DO_Funtion				=Array1DGetValue($rowArray ,1);
-	$DO_SingalType				=Array1DGetValue($rowArray ,2);
-	$DO_Remark				=Array1DGetValue($rowArray ,3);
-      	$StartBit					=Array1DGetValue($rowArray ,5);
-	
-	$LoadBox_CMD				=Array1DGetValue($rowArray ,6);
-	$DMM_CH					=Array1DGetValue($rowArray ,7);
-	$DO_Off_LSL				=Array1DGetValue($rowArray ,8);
-	$DO_Off_USL				=Array1DGetValue($rowArray ,9);
-	$DO_On_LSL				=Array1DGetValue($rowArray ,10);
-	$DO_On_USL				=Array1DGetValue($rowArray ,11);  
-    	$DO_TestEnable				=Array1DGetValue($rowArray ,12);
-	$DO_ParallelTest				=Array1DGetValue($rowArray ,13);  
+	call Load_DO_STEP_DATA();
       	// show row info
 	//检查当前步骤是否测试这个步骤
 	$DO_TestEnable = NumericComparison($DO_TestEnable,1, "==");
@@ -637,8 +621,35 @@ function Digital_OUT_TEST()
 	    $DMMRead_Vol  = Add($DMMRead_Vol,0.5);
 	  }
 	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
-	  $_DO_Test_PASS=  NumericLimitTestBool($DMMRead_Vol, $DO_On_LSL, $DO_On_USL);
-	  //DO Test bebug 标志位
+	  $Internal_ENABLE = NumericComparison($Internal_Enabel, 1, "==");
+	  if($Internal_acqu)
+	  {
+	    $Acqu_type = StringTrim($Acqu_type);
+	    $Acqu_type_AI =StringComparison($Acqu_type,"AI","=="); //检查回采类型
+	    if($Acqu_type_AI)//若是AI类型
+	    {
+	      //~~~~~~~~~~~~~~~~~~~DO回采电压检查~~~~~~~~~~~~~~~~~~~
+	      $AI_rate=0.0012207; //比率
+	      call SUB_Read_Analog();
+	      $AI_StartBit = CopyVariable($Acqu_Start_Bit);  // 需要传递给Parse_AI_DATA的参数
+	      call Parse_AI_DATA();
+	      $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	      // set MeasuName
+	      $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+	      RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $Acqu_Curr_LSL, $Acqu_Curr_USL, true);
+	    }
+	     $Acqu_type_DI =StringComparison($Acqu_type,"NA","=="); //检查回采类型
+	    if($Acqu_type_DI) //DI 类型回采
+	    {
+	    call SUB_Read_Digital_Input();
+	    $ResultBit = StringSub($Digital_Rev_Binary_String,$Acqu_Start_Bit,1); 
+	    // check Readult 
+	    RecordMeasurementWithLimits($Internal_acqu, $ResultBit, "NA", true, $Acqu_Curr_LSL, $Acqu_Curr_USL, true);
+	  }
+	  
+	  } 
+	  
+	  $_DO_Test_PASS=  NumericLimitTestBool($DMMRead_Vol, $DO_On_LSL, $DO_On_USL); //DO Test bebug 标志位
 	  if($g_DO_TestDebug==true)
 	  {
 	    if(!$_DO_Test_PASS)
@@ -678,8 +689,7 @@ function Digital_OUT_TEST()
 	    $DMMRead_Vol  = Abs($DMMRead_Vol);
 	  }
 	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true,  $DO_Off_LSL, $DO_Off_USL, true);
-	    $_DO_Test_PASS=  NumericLimitTestBool($DMMRead_Vol, $DO_Off_LSL, $DO_Off_USL);
-	  //DO Test bebug 标志位
+	  $_DO_Test_PASS=  NumericLimitTestBool($DMMRead_Vol, $DO_Off_LSL, $DO_Off_USL);  //DO Test bebug 标志位
 	  if($g_DO_TestDebug==true)
 	  {
 	    if(!$_DO_Test_PASS)
@@ -726,21 +736,21 @@ function Digital_OUT_FIX_TEST()
     while($rows_Loop < $rows_Length)
   {
 	// Loading Config info
-	$rowArray 				= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$rowArray 					= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
 	$DO_PIN					=Array1DGetValue($rowArray ,0);
 	$DO_Funtion				=Array1DGetValue($rowArray ,1);
-	$DO_SingalType			=Array1DGetValue($rowArray ,2);
+	$DO_SingalType				=Array1DGetValue($rowArray ,2);
 	$DO_Remark				=Array1DGetValue($rowArray ,3);
       	$StartBit					=Array1DGetValue($rowArray ,5);
 	
-	$LoadBox_CMD			=Array1DGetValue($rowArray ,6);
-	$DMM_CH				=Array1DGetValue($rowArray ,7);
+	$LoadBox_CMD				=Array1DGetValue($rowArray ,6);
+	$DMM_CH					=Array1DGetValue($rowArray ,7);
 	$DO_Off_LSL				=Array1DGetValue($rowArray ,8);
-	$DO_Off_USL			=Array1DGetValue($rowArray ,9);
-	$DO_On_LSL			=Array1DGetValue($rowArray ,10);
-	$DO_On_USL			=Array1DGetValue($rowArray ,11);  
-    	$DO_TestEnable			=Array1DGetValue($rowArray ,12);
-	$DO_ParallelTest			=Array1DGetValue($rowArray ,13);  
+	$DO_Off_USL				=Array1DGetValue($rowArray ,9);
+	$DO_On_LSL				=Array1DGetValue($rowArray ,10);
+	$DO_On_USL				=Array1DGetValue($rowArray ,11);  
+    	$DO_TestEnable				=Array1DGetValue($rowArray ,12);
+	$DO_ParallelTest				=Array1DGetValue($rowArray ,13);  
       	// show row info
 	//检查当前步骤是否测试这个步骤
 	$DO_TestEnable = NumericComparison($DO_TestEnable,1, "==");
@@ -940,6 +950,32 @@ function Digital_OUT_FIX_RES_TEST()
 
 
 
+function Load_DO_STEP_DATA()
+{
+  $rowArray 					= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+  $DO_PIN						=Array1DGetValue($rowArray ,0);
+  $DO_Funtion					=Array1DGetValue($rowArray ,1);
+  $DO_SingalType					=Array1DGetValue($rowArray ,2);
+  $DO_Remark					=Array1DGetValue($rowArray ,3);
+  $StartBit						=Array1DGetValue($rowArray ,5);
+  
+  $LoadBox_CMD					=Array1DGetValue($rowArray ,6);
+  $DMM_CH						=Array1DGetValue($rowArray ,7);
+  $DO_Off_LSL					=Array1DGetValue($rowArray ,8);
+  $DO_Off_USL					=Array1DGetValue($rowArray ,9);
+  $DO_On_LSL					=Array1DGetValue($rowArray ,10);
+  $DO_On_USL					=Array1DGetValue($rowArray ,11);  
+  $DO_TestEnable				=Array1DGetValue($rowArray ,12);
+  $DO_ParallelTest				=Array1DGetValue($rowArray ,13);  
+  //~~~~~~~~~~~~~~~~~~~~~	内部采集参数  ~~~~~~~~~~~~~~~~~~~~~
+  $Internal_acqu					=Array1DGetValue($rowArray ,14);    
+  $Internal_acqu					=Array1DGetValue($rowArray ,15);
+  $Acqu_type					=Array1DGetValue($rowArray ,16);    
+  $Acqu_Start_Bit				=Array1DGetValue($rowArray ,17);    
+  $Acqu_Curr_USL				=Array1DGetValue($rowArray ,18);    
+  $Acqu_Curr_LSL					=Array1DGetValue($rowArray ,19);    
+  return;
+}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PWM INPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function PWM_IN_TEST_Duty75()
 {
@@ -1865,7 +1901,6 @@ function SUB_Read_Analog() // 读取所有的AI状态值，返回HEX不解析
     //~ RecordMeasurementPassFail($measName, $Rev_Msg_array_Len, "Bool", true,$Result );
     $measName="Analog_INPUT_DATA";
     RecordMeasurement($measName, $CAN_Rev_Msg, "NA", true); 
-    
     UpdateStatus("//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Read_Analog_INPUT_END~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n");
     return;
  }
@@ -1954,9 +1989,8 @@ function Load_AI_STEP_DATA()  // 从Excel tab 中获取一行测试数据
 	  //delay 200ms
 	  SleepMilliseconds($BeforReadAI_ms);  //拉载后延时多久去读取AI值
 	  //read AI state
-	  call SUB_Read_Analog();  // out Pararm $AI_Binary_String
-	  
-	  call Parse_AI_DATA();
+	  call SUB_Read_Analog(); 	 // 读取AI data
+	  call Parse_AI_DATA();	//解析AIdata
 	  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
 	  // set MeasuName
 	  $MeasuName = $AI_PIN+"_"+$AI_state1_info+"_Vol";
@@ -2147,34 +2181,7 @@ function FULL_Bridge_TEST_Sate3()
     while($rows_Loop < $rows_Length)
     {
       // Loading Config info
-      $rowArray 		= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
-      
-      $PIN					=Array1DGetValue($rowArray ,0);
-      $Function				=Array1DGetValue($rowArray ,1);
-      $singal_type				=Array1DGetValue($rowArray ,2);
-      
-      $StartBit				=Array1DGetValue($rowArray ,4);
-      $bit_wide				=Array1DGetValue($rowArray ,5);
-      
-      $DUT_CMD_STATE1		=Array1DGetValue($rowArray ,6); //Start1 Forward turn
-      $DUT_CMD_STATE2		=Array1DGetValue($rowArray ,9); //Start2 reverse turn
-      $DUT_CMD_STATE3		=Array1DGetValue($rowArray ,12); //Start3  brake
-      
-      $DMM_CH				=Array1DGetValue($rowArray ,16);
-      $LoadBoxCMD			=Array1DGetValue($rowArray ,15);
-      
-      //Start1 Forward turn
-      $LSL_STATE1			=Array1DGetValue($rowArray ,7);
-      $USL_STATE1			=Array1DGetValue($rowArray ,8);
-      //Start2 reverse turn
-      $LSL_STATE2			=Array1DGetValue($rowArray ,10);
-      $USL_STATE2			=Array1DGetValue($rowArray ,11);	
-      //Start3  brake
-      $LSL_STATE3			=Array1DGetValue($rowArray ,13);
-      $USL_STATE3			=Array1DGetValue($rowArray ,14);	
-      
-      $StepEnable				=Array1DGetValue($rowArray ,18);
-      $ParallelTest				=Array1DGetValue($rowArray ,19);
+      call Load_FULL_Bridge_STEP_DATA();
       
       $StepEnable = NumericComparison($StepEnable, 1, "==");
       if($StepEnable)  //检查是否使能测试
@@ -2211,7 +2218,7 @@ function FULL_Bridge_TEST_Sate3()
 	SleepMilliseconds(1000);
 	// call test vol
 	$Rang =100;
-	$Channel = 	CopyVariable($DMM_CH);
+	$Channel 		= CopyVariable($DMM_CH);
 	$lowerLimit 	= CopyVariable($LSL_STATE3);
 	$upperLimit 	= CopyVariable($USL_STATE3);
 	//Output:
@@ -2222,13 +2229,13 @@ function FULL_Bridge_TEST_Sate3()
 	UpdateStatus($TempMsg);
 	$measureName=$MeasName;
 	$inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
-	  if($inLimits)
-	  {
+	if($inLimits)
+	{
 	    $DMMRead_Vol  = Abs($DMMRead_Vol);
 	  }
 	RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
 	if($g_FULL_Bridge_Debug==true)
-	  {
+	{
 	    //进入这个case 可以测试当前pin 的电压
 	    $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
 	    $TestContinue = OperatorPrompt($temp, "OKCancel");
@@ -2237,14 +2244,12 @@ function FULL_Bridge_TEST_Sate3()
 	    {
 	      StopTestCell($CellNumber);
 	    }
-	  }
+	}
       }
       $rows_Loop=$rows_Loop+1;
     }
       return;
   }
-
-
 function FULL_Bridge_TEST_Sate2()
 {
     call Fixtures_LoadBox_LoadOn();
@@ -2262,34 +2267,7 @@ function FULL_Bridge_TEST_Sate2()
     while($rows_Loop < $rows_Length)
     {
       // Loading Config info
-      $rowArray 		= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
-      
-      $PIN					=Array1DGetValue($rowArray ,0);
-      $Function				=Array1DGetValue($rowArray ,1);
-      $singal_type				=Array1DGetValue($rowArray ,2);
-      
-      $StartBit				=Array1DGetValue($rowArray ,4);
-      $bit_wide				=Array1DGetValue($rowArray ,5);
-      
-      $DUT_CMD_STATE1		=Array1DGetValue($rowArray ,6); //Start1 Forward turn
-      $DUT_CMD_STATE2		=Array1DGetValue($rowArray ,9); //Start2 reverse turn
-      $DUT_CMD_STATE3		=Array1DGetValue($rowArray ,12); //Start3  brake
-      
-      $DMM_CH				=Array1DGetValue($rowArray ,16);
-      $LoadBoxCMD			=Array1DGetValue($rowArray ,15);
-      
-      //Start1 Forward turn
-      $LSL_STATE1			=Array1DGetValue($rowArray ,7);
-      $USL_STATE1			=Array1DGetValue($rowArray ,8);
-      //Start2 reverse turn
-      $LSL_STATE2			=Array1DGetValue($rowArray ,10);
-      $USL_STATE2			=Array1DGetValue($rowArray ,11);	
-      //Start3  brake
-      $LSL_STATE3			=Array1DGetValue($rowArray ,13);
-      $USL_STATE3			=Array1DGetValue($rowArray ,14);	
-      
-      $StepEnable				=Array1DGetValue($rowArray ,18);
-      $ParallelTest				=Array1DGetValue($rowArray ,19);
+      call Load_FULL_Bridge_STEP_DATA();
       
       $StepEnable = NumericComparison($StepEnable, 1, "==");
       if($StepEnable)  //检查是否使能测试
@@ -2337,8 +2315,21 @@ function FULL_Bridge_TEST_Sate2()
 	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
 	UpdateStatus($TempMsg);
 	$measureName=$MeasName;
-
 	RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
+	
+	//~~~~~~~~~~~~~~~~~~~回采电压检查~~~~~~~~~~~~~~~~~~~
+	$Internal_acqu_Enable = NumericComparison($Internal_acqu_Enable, 1, "==");
+	if($Internal_acqu_Enable)
+	{
+	  $AI_rate=0.0012207; //比率
+	  call SUB_Read_Analog();
+	  $AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
+	  call Parse_AI_DATA();
+	  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	  // set MeasuName
+	  $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+	  RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL2, $Internal_acqu_Curr_USL2, true);
+	}
     	if($g_FULL_Bridge_Debug==true)
 	  {
 	    //进入这个case 可以测试当前pin 的电压
@@ -2373,38 +2364,11 @@ function FULL_Bridge_TEST_Sate1()
     while($rows_Loop < $rows_Length)
     {
       // Loading Config info
-      $rowArray 		= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
-      
-      $PIN					=Array1DGetValue($rowArray ,0);
-      $Function				=Array1DGetValue($rowArray ,1);
-      $singal_type				=Array1DGetValue($rowArray ,2);
-      
-      $StartBit				=Array1DGetValue($rowArray ,4);
-      $bit_wide				=Array1DGetValue($rowArray ,5);
-      
-      $DUT_CMD_STATE1		=Array1DGetValue($rowArray ,6); //Start1 Forward turn
-      $DUT_CMD_STATE2		=Array1DGetValue($rowArray ,9); //Start2 reverse turn
-      $DUT_CMD_STATE3		=Array1DGetValue($rowArray ,12); //Start3  brake
-      
-      $DMM_CH				=Array1DGetValue($rowArray ,16);
-      $LoadBoxCMD			=Array1DGetValue($rowArray ,15);
-      
-      //Start1 Forward turn
-      $LSL_STATE1			=Array1DGetValue($rowArray ,7);
-      $USL_STATE1			=Array1DGetValue($rowArray ,8);
-      //Start2 reverse turn
-      $LSL_STATE2			=Array1DGetValue($rowArray ,10);
-      $USL_STATE2			=Array1DGetValue($rowArray ,11);	
-      //Start3  brake
-      $LSL_STATE3			=Array1DGetValue($rowArray ,13);
-      $USL_STATE3			=Array1DGetValue($rowArray ,14);	
-      
-      $StepEnable				=Array1DGetValue($rowArray ,18);
-      $ParallelTest				=Array1DGetValue($rowArray ,19);
-      
-      $StepEnable = NumericComparison($StepEnable, 1, "==");
-      if($StepEnable)  //检查是否使能测试
-      {
+    call Load_FULL_Bridge_STEP_DATA();
+	  
+    $StepEnable = NumericComparison($StepEnable, 1, "==");
+    if($StepEnable)  //检查是否使能测试
+    {
 	//Set test Name 
 	$MeasName = $PIN+"_Corotation";
 	// show row info
@@ -2459,20 +2423,32 @@ function FULL_Bridge_TEST_Sate1()
 	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
 	UpdateStatus($TempMsg);
 	$measureName=$MeasName;
-
 	RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
-	if($g_FULL_Bridge_Debug==true)
-	  {
+      //~~~~~~~~~~~~~~~~~~~回采电压检查~~~~~~~~~~~~~~~~~~~
+      $Internal_acqu_Enable = NumericComparison($Internal_acqu_Enable, 1, "==");
+      if($Internal_acqu_Enable)
+      {
+	$AI_rate=0.0012207; //比率
+	call SUB_Read_Analog();
+	$AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
+	call Parse_AI_DATA();
+	$Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	// set MeasuName
+	$MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+	RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL1, $Internal_acqu_Curr_USL1, true);
+      }
+      if($g_FULL_Bridge_Debug==true)
+      {
 	    //进入这个case 可以测试当前pin 的电压
-	    $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $temp = $PIN+" Please measure the PIN voltage,Click OKCancel to continue";
 	    $TestContinue = OperatorPrompt($temp, "OKCancel");
 	    $Result = StringComparison($TestContinue,"Cancel","==");
 	    if( $Result==true)
 	    {
 	      StopTestCell($CellNumber);
 	    }
-	  }
-      }
+	}
+    }
       $rows_Loop=$rows_Loop+1;
     }
       return;
@@ -2535,6 +2511,51 @@ function Generate_Motor_Control_Command()
 }
   
   
+
+function Load_FULL_Bridge_STEP_DATA()  // 从Excel tab 中获取一行测试数据
+{
+  // Loading Config info
+$rowArray 		= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+
+$PIN						=Array1DGetValue($rowArray ,0);
+$Function					=Array1DGetValue($rowArray ,1);
+$singal_type				=Array1DGetValue($rowArray ,2);
+
+$StartBit					=Array1DGetValue($rowArray ,4);
+$bit_wide					=Array1DGetValue($rowArray ,5);
+
+$DUT_CMD_STATE1			=Array1DGetValue($rowArray ,6); //Start1 Forward turn
+$DUT_CMD_STATE2			=Array1DGetValue($rowArray ,9); //Start2 reverse turn
+$DUT_CMD_STATE3			=Array1DGetValue($rowArray ,12); //Start3  brake
+
+$DMM_CH					=Array1DGetValue($rowArray ,16);
+$LoadBoxCMD				=Array1DGetValue($rowArray ,15);
+
+//Start1 Forward turn
+$LSL_STATE1				=Array1DGetValue($rowArray ,7);
+$USL_STATE1				=Array1DGetValue($rowArray ,8);
+//Start2 reverse turn
+$LSL_STATE2				=Array1DGetValue($rowArray ,10);
+$USL_STATE2				=Array1DGetValue($rowArray ,11);	
+//Start3  brake
+$LSL_STATE3				=Array1DGetValue($rowArray ,13);
+$USL_STATE3				=Array1DGetValue($rowArray ,14);	
+
+$StepEnable				=Array1DGetValue($rowArray ,18);
+$ParallelTest				=Array1DGetValue($rowArray ,19);
+//~~~~~~~~~~~~~~~`内部回采参数~~~~~~~~~~~~~~~
+$Internal_acqu				=Array1DGetValue($rowArray ,20);
+$Internal_acqu_Enable			=Array1DGetValue($rowArray ,21);
+$acqu_type				=Array1DGetValue($rowArray ,22);
+$Internal_acqu_StartBit		=Array1DGetValue($rowArray ,23);
+$Internal_acqu_Curr_USL1		=Array1DGetValue($rowArray ,24);
+$Internal_acqu_Curr_LSL1		=Array1DGetValue($rowArray ,25);
+$Internal_acqu_Curr_USL2		=Array1DGetValue($rowArray ,26);
+$Internal_acqu_Curr_LSL2		=Array1DGetValue($rowArray ,27);
+return;
+  
+}
+
 
 //左外后视镜面左右调节
 
@@ -2641,7 +2662,19 @@ function J6_02_J6_04_Corotation()
   $Channel 	= "115";
   $lowerLimit =12;
   $upperLimit =14;
-  call FULL_Bridge_Briver_2();
+  $Internal_acqu_Curr_LSL=-999
+  $Internal_acqu_Curr_USL=-999;
+  $Internal_Name="M_AI_ESCCU_CSO2";
+  call FULL_Bridge_Briver_2(); 
+  //~~~~~~~~~~~~~~~~~~~回采电压检查~~~~~~~~~~~~~~~~~~~
+  $AI_rate=0.0012207; //比率
+  call SUB_Read_Analog();
+  $AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
+  call Parse_AI_DATA();
+  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+  // set MeasuName
+  $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+  RecordMeasurementWithLimits($Internal_Name, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL, $Internal_acqu_Curr_USL, true);
   return;
 }
 function J6_02_J6_04_Reverses()
@@ -2654,8 +2687,21 @@ function J6_02_J6_04_Reverses()
   $Rang =100;
   $Channel 	= "115";
   $lowerLimit =-14;
-  $upperLimit =12;
+  $upperLimit =-12;
+  $Internal_acqu_Curr_LSL=-999;
+  $Internal_acqu_Curr_USL=-999;
+  $Internal_Name="M_AI_ESCCU_CSO2";
+  $AI_rate=0.0012207; //比率
   call FULL_Bridge_Briver_2();
+    //~~~~~~~~~~~~~~~~~~~回采电压检查~~~~~~~~~~~~~~~~~~~
+  $AI_rate=0.0012207; //比率
+  call SUB_Read_Analog();
+  $AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
+  call Parse_AI_DATA();
+  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+  // set MeasuName
+  $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+  RecordMeasurementWithLimits($Internal_Name, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL, $Internal_acqu_Curr_USL, true);
   return;
 }
 function J6_02_J6_04_brake()
@@ -2687,7 +2733,20 @@ function J6_04_J4_03_Corotation()
   $Channel 	= "125";
   $lowerLimit =12;
   $upperLimit =14;
+  $Internal_acqu_Curr_LSL=-999;
+  $Internal_acqu_Curr_USL=-999;
+  $Internal_Name="M_AI_ESCCU_CSO2";
+  $AI_rate=0.0012207; //比率
   call FULL_Bridge_Briver_2();
+    //~~~~~~~~~~~~~~~~~~~回采电压检查~~~~~~~~~~~~~~~~~~~
+  $AI_rate=0.0012207; //比率
+  call SUB_Read_Analog();
+  $AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
+  call Parse_AI_DATA();
+  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+  // set MeasuName
+  $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+  RecordMeasurementWithLimits($Internal_Name, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL, $Internal_acqu_Curr_USL, true);
   return;
 }
 function J6_04_J4_03_brake()
@@ -2716,7 +2775,20 @@ function J6_04_J4_03_Reverses()
   $Channel 	= "125";
   $lowerLimit =12;
   $upperLimit =14;
+  $Internal_acqu_Curr_LSL=-999;
+  $Internal_acqu_Curr_USL=-999;
+  $Internal_Name="M_AI_ESCCU_CSO2";
+  $AI_rate=0.0012207; //比率
   call FULL_Bridge_Briver_2();
+  //~~~~~~~~~~~~~~~~~~~回采电压检查~~~~~~~~~~~~~~~~~~~
+  $AI_rate=0.0012207; //比率
+  call SUB_Read_Analog();
+  $AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
+  call Parse_AI_DATA();
+  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+  // set MeasuName
+  $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+  RecordMeasurementWithLimits($Internal_Name, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL, $Internal_acqu_Curr_USL, true);
   return;
 }
 
@@ -2761,27 +2833,27 @@ function FULL_Bridge_Briver_2()
     call Keysight6510_MeasureDCVoltage();
     $measureName=$MeasName+"_VOL";
   $inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
-      if($inLimits)
+  if($inLimits)
+  {
+    $DMMRead_Vol  = Abs($DMMRead_Vol);
+  }
+  RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
+  if($g_FULL_Bridge_Debug==true)
+  {
+    $inLimits = NumericLimitTestBool($DMMRead_Vol, $lowerLimit, $upperLimit);
+    if(!$inLimits)
       {
-	$DMMRead_Vol  = Abs($DMMRead_Vol);
+	      //进入这个case 可以测试当前pin 的电压
+	    $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
       }
-    RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
-    if($g_FULL_Bridge_Debug==true)
-    {
-      $inLimits = NumericLimitTestBool($DMMRead_Vol, $lowerLimit, $upperLimit);
-      if(!$inLimits)
-	{
-	  	//进入这个case 可以测试当前pin 的电压
-	      $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
-	      $TestContinue = OperatorPrompt($temp, "OKCancel");
-	      $Result = StringComparison($TestContinue,"Cancel","==");
-	      if( $Result==true)
-	      {
-		StopTestCell($CellNumber);
-	      }
-	}
 
-      }
+  }
 
     return;
 }

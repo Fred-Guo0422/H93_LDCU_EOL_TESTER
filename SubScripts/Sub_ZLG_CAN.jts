@@ -2,7 +2,6 @@
 function Init_ZLG_USBCANFD()
 {
     UpdateStatus("====== Init_ZLG_USBCANFD start=========");
-
     $debug = true;
     //~ $debug = false;
     /////Init  ZLG USBCANFD 
@@ -21,10 +20,12 @@ function Init_ZLG_USBCANFD()
     //~ 第七个参数是是否加速，0加速，1不加速，如果是CAN这个参数设啥都不影响
     $g_ZLG_USBCAN_Channel_Handle = USBCANFD_InitCAN($g_ZLG_USBCAN_Device_Handle, 0, 0, 1,500,2000,0);   
     USBCANFD_Start($g_ZLG_USBCAN_Channel_Handle);//通道的句柄
+  //~ OperatorPrompt($g_ZLG_USBCAN_Channel_Handle, "OK");
     SleepMilliseconds(200);
     $g_ZLG_USBCAN_Channel_Handle2 = USBCANFD_InitCAN($g_ZLG_USBCAN_Device_Handle, 1, 0, 1,500,2000,0);   
     SleepMilliseconds(200);
     USBCANFD_Start($g_ZLG_USBCAN_Channel_Handle2);//
+     //~ OperatorPrompt($g_ZLG_USBCAN_Channel_Handle2, "OK");
     //~ $Setfilter_result = USBCANFD_SetFilter($Device_Handle,0,0,"00","60010","60012","FFFFFFFF"); //0: 设备号   0：通道号
     //~ UpdateStatus($Setfilter_result);	
     //第一个参数是设备句柄
@@ -35,7 +36,7 @@ function Init_ZLG_USBCANFD()
     //第六参数是第二组要滤波CAN的起始ID，
     //第七参数是第二组要滤波CAN的结束ID，
     $Setfilter_result = USBCANFD_SetFilter($g_ZLG_USBCAN_Device_Handle,0,0,"700","7FF","00","00"); 
-    $Setfilter_result = USBCANFD_SetFilter($g_ZLG_USBCAN_Device_Handle,1,0,"700","7FF","00","00"); 
+    //~ $Setfilter_result = USBCANFD_SetFilter($g_ZLG_USBCAN_Device_Handle,1,0,"700","7FF","00","00"); 
     $CommandWaittingTime = 100 ;
     UpdateStatus("====== Init_ZLG_USBCANFD End=========");
     return;
@@ -86,6 +87,7 @@ function ZLG_CAN_Rev()
 function ZLG_CANFD_Rev()
 {
     //~ UpdateStatus("===============ZLG_CANFD_Rev begin==============");
+
     $CAN_Rev_Msg = "";
     $g_CAN_Rev_Msg_Num = USBCANFD_GetReceiveNum($g_ZLG_USBCAN_Channel_Handle,1);//1.channel handle;2.CAN-0/CANFD-1;
     //~ UpdateStatus($g_CAN_Rev_Msg_Num);
@@ -127,8 +129,8 @@ function ZLG_CANFD_Send()
     $Send_Result = false;
     $Loop = 0;
     //~ UpdateStatus($canID);
-    while($Loop < 3 && !$Send_Result)
-    {
+    //~ while($Loop < 3 && !$Send_Result)
+    //~ {
       //~ //1.channel handle;
       //~ 2.CAN ID;
       //~ 3.extend frame-1/standard frame-0,
@@ -145,7 +147,7 @@ function ZLG_CANFD_Send()
 	  SleepMilliseconds(20);
 	  UpdateStatus("ZLG_CANFD_Send Error");
       }
-    }
+    //~ }
     //~ UpdateStatus("===============ZLG_CANFD_Send end==============");
     return;
 }
@@ -208,10 +210,6 @@ function CANFD_SendMillisecondsMultiWait()
 {
   
 // INPUT
-	//~ $CANFD_SEND_LOOP=0;
-	// ~$CAN_Rev_ExpMsg
-	//~ $Rev_Delay
-	//$CAN_Send_Msg
 // OUTPUT
       //~c
       //~ $CAN_Rev_Msg
@@ -244,9 +242,8 @@ function CANFD_SendMillisecondsMultiWait()
     }
     //~ "ID:07E8,data:"
 
-    
-  }
 
+  }
     $trmp="NULL";
   return;
 }
@@ -301,37 +298,48 @@ function CANFD_SendMillisecondsMultiWait_RECE_MultiFrame()
   return;
 }
 
+function ZLG_CAN_Clean_Buffer_Channel1()
+{
+  return;
+}
 //~~~~~~~~~~~~~~~~Zlg CAN Channel 2~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function ZLG_CAN_CH2_Rev()
 {
      
   //~ UpdateStatus("===============ZLG_CAN_Rev begin==============");
     $CAN_Rev_Msg = "";
+  $g_CAN_Rev_Msg_Num =0;
     $g_CAN_Rev_Msg_Num = USBCAN_GetReceiveNum($g_ZLG_USBCAN_Channel_Handle2,0);//1.channel handle;2.CAN-0/CANFD-1;
     //~ UpdateStatus($g_CAN_Rev_Msg_Num);
     if($g_CAN_Rev_Msg_Num > 0)
     {
-      $CAN_Rev_Msg = USBCAN_Receive($g_ZLG_USBCAN_Channel_Handle);//channel handle
+      $CAN_Rev_Msg = USBCAN_Receive($g_ZLG_USBCAN_Channel_Handle2);//channel handle
       //~ UpdateStatus($CAN_Rev_Msg);
+    }
       $show_CAN_Rev_Msg="CAN_Rev_Msg = "+$CAN_Rev_Msg;
       UpdateStatus ($show_CAN_Rev_Msg);
-    }
     //~ UpdateStatus("===============ZLG_CAN_Rev end==============");
     
     return;
 }
 function ZLG_CANFD_CH2_Rev()
 {
-    UpdateStatus("===============ZLG_CANFD_Rev begin==============");
+  UpdateStatus("===============ZLG_CANFD_CH2_Rev begin==============");
+  UpdateStatus($g_ZLG_USBCAN_Device_Handle);
+  UpdateStatus($g_ZLG_USBCAN_Channel_Handle2);
+  //~ OperatorPrompt($g_ZLG_USBCAN_Channel_Handle, "OK");
+  //~ OperatorPrompt($g_ZLG_USBCAN_Channel_Handle2, "OK");
     $CAN_Rev_Msg = "";
     $g_CAN_Rev_Msg_Num = USBCANFD_GetReceiveNum($g_ZLG_USBCAN_Channel_Handle2,1);//1.channel handle;2.CAN-0/CANFD-1;
     UpdateStatus($g_CAN_Rev_Msg_Num);
+    
     if($g_CAN_Rev_Msg_Num > 0)
     {
-	$CAN_Rev_Msg = USBCANFD_Receive($g_ZLG_USBCAN_Channel_Handle);//1.channel handle
-	UpdateStatus($CAN_Rev_Msg);
+	$CAN_Rev_Msg = USBCANFD_Receive($g_ZLG_USBCAN_Channel_Handle2);//1.channel handle
     }
-    UpdateStatus("===============ZLG_CANFD_Rev end==============");
+    $show_CAN_Rev_Msg="CAN_Rev_Msg = "+$CAN_Rev_Msg;
+    UpdateStatus ($show_CAN_Rev_Msg);
+    UpdateStatus("===============ZLG_CANFD_CH2_Rev end==============");
     return;
 }
 function ZLG_CAN_CH2_Send()
@@ -349,7 +357,7 @@ function ZLG_CAN_CH2_Send()
       $Loop = $Loop + 1;
       if(!$Send_Result)
       {
-	$show_CAN_Send_Msg="CAN_Send_Msg_failed = "+$CAN_Send_Msg+"; Handle="+$g_ZLG_USBCAN_Channel_Handle;
+	$show_CAN_Send_Msg="CAN_Send_Msg_failed = "+$CAN_Send_Msg+"; Handle="+$g_ZLG_USBCAN_Channel_Handle2;
 	UpdateStatus ($show_CAN_Send_Msg);
 	call Read_ZLG_USBCANFD_Info();
 	SleepMilliseconds(5);
