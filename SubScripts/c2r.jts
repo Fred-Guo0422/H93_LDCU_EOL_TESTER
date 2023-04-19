@@ -1,0 +1,48 @@
+  // 扫描枪串口参数
+  $Scanner_BaudRate = New("Integer",115200);
+  $Scanner_ByteSize = New("Integer",8);
+  $Scanner_Parity = New("String","N");
+  $Scanner_StopBits = New("Integer",1); 
+  $ComportBarcodeScanner =New("Integer",8); //串口
+  function UUT_Barcode_Scan()
+{
+  SetTestName("UUT_Barcode_Scan");  
+  UpdateStatus("\n=========== UUT_Barcode_Scan ===========");  
+  $ExpectedLength = 27;  
+  $maxScanTimes = 5;
+  $loopTimes = 0;
+  Label lbl_BarcodeScanLoop:
+  SleepMilliseconds(10);
+  $loopTimes = $loopTimes + 1;
+  if($loopTimes > $maxScanTimes)
+  {
+    $receiveBuffer = SerialSendBinaryMilliseconds($scanerPort,"16 55 0D","",600);
+    SerialClose($scanerPort);
+    $message = "Get UUT's Barcode Fail";
+    RecordMeasurementPassFail($message,"FAIL","PASS/FAIL",false,false);
+  }
+  //let's get serialnumber
+  $receiveBuffer = "";
+  $scanerPort = SerialOpen($ComportBarcodeScanner,$Scanner_BaudRate,$Scanner_ByteSize,$Scanner_Parity,$Scanner_StopBits);
+  // trigger read 
+  $receiveBuffer = SerialSendBinaryMilliseconds($scanerPort,"16 54 0D","",600);
+  SerialClose($scanerPort);
+  UpdateStatus($receiveBuffer);
+  //Replace \r\n
+  //~ $receiveBuffer = StringReplace($receiveBuffer,"0D 0A","");
+  $SerialNumber = HexStringToString($receiveBuffer," "); 
+  $SerialNumber = StringTrim($SerialNumber);
+  $SerialNumber = StringToUpper($SerialNumber);
+  UpdateStatus($SerialNumber);  
+  //setting serialnumber to test cell
+  SetSerialNumberField($SerialNumber);
+  $SerialNumberLength = StringLength($SerialNumber);
+  // check label length
+   UpdateStatus($SerialNumberLength);  
+    if($SerialNumberLength!= $ExpectedLength)
+  {
+    goto lbl_BarcodeScanLoop;
+  }
+    SetSerialNumberField($SerialNumber);
+  return;
+}

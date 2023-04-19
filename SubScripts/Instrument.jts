@@ -1,0 +1,610 @@
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//File Name:					Instrument
+//Customer: 					NA
+//Project:   					ALL
+//Creator:   					Fred Guo
+//Software Revision:				Rev1
+//Jabiltest Version:    			7.53.00
+//Released:					2023/04/12
+//Description:				all Instrument Function
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions DAQ6509  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+function Init_DAQ6509()
+{
+      //input:
+	    //1,$NI_6509_Port
+    //Output:
+	    //1,$DeviceName
+	    //
+  
+  $DeviceName= ReadIniFile($g_System_Config_File,"HW_Config","NI_6509_Port");
+  UpdateStatus($DeviceName);
+  $PowerTask ="PowerTask";
+  NI_DAQmx_Initialize();
+  NI_DAQmx_ResetDevice($DeviceName);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port0","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port1","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port2","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port3","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port4","00",$PowerTask);
+  NI_DAQmx_WriteDIOPort($DeviceName,"port5","00",$PowerTask);
+  return;
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions IT6722  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+function Init_IT6722()
+{
+  //打开电源1，检查通信，上电，13.5V  5A
+  $g_IT6722_Port = ReadIniFile($g_System_Config_File,"HW_Config","IT6722A_Port ");
+  UpdateStatus($g_IT6722_Port);
+  $timeOut = 2000;          // Time out = 2 seconds.
+  ($g_IT6722_handle ,$success)= NIVISA_OpenBool($g_IT6722_Port, $timeOut);
+  if(!$success)
+  {
+    Abort("Open IT6722 Failed ");
+  }
+  NIVISA_Write($g_IT6722_handle, "*IDN?\n");
+  SleepMilliseconds(100);
+  $Response =  NIVISA_Read($g_IT6722_handle);
+  UpdateStatus($Response);
+  $Result = StringContains($Response,"IT6722A");
+  if(!$Result)
+  {
+      Fail("Please Check UUT Power IT6722A #1");
+  }
+  NIVISA_Write($g_IT6722_handle, "*CLS\n");
+  SleepMilliseconds(100);
+  return;
+}
+function Close_IT6722()
+{
+  NIVISA_Write($g_IT6722_handle, "OUTP OFF\n");
+  SleepMilliseconds(100);
+  NIVISA_Close($g_IT6722_handle);
+  return;
+}
+
+function POWER_ON_IT6722()
+{
+  NIVISA_Write($g_IT6722_handle, "APPL 13.5,10.0\n");
+  SleepMilliseconds(100);
+  NIVISA_Write($g_IT6722_handle, "OUTP ON\n");
+  SleepMilliseconds(100);
+  return;
+}
+
+function POWER_OFF_IT6722()
+{
+  NIVISA_Write($g_IT6722_handle, "APPL 13.5,10.0\n");
+  SleepMilliseconds(100);
+  NIVISA_Write($g_IT6722_handle, "OUTP OFF\n");
+  SleepMilliseconds(100);
+  return;
+}
+
+function IT6722_Current()
+{
+  //INPUT
+	//~ $Current_USL=0
+	//~ $Current_LSL=0
+	//~ $measureName
+  UpdateStatus("~~~~~~~~~~~~~ IT6722_Current TEST ~~~~~~~~~~");
+  NIVISA_Write($g_IT6722_handle, "MEASure:CURRent?\n");
+  SleepMilliseconds(100);
+  $Response =  NIVISA_Read($g_IT6722_handle);
+  UpdateStatus($Response);  
+  //~ $measureName="WorkMode_Curren";
+  RecordMeasurementWithLimits($measureName, $Response, "A", true, $Current_LSL, $Current_USL, true);
+   UpdateStatus("~~~~~~~~~~~~~ IT6722_Current End ~~~~~~~~~~");
+  return;
+}
+
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions DG5072  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+//~ $RIGOL_DG5072_VISA="USB0::0x1AB1::0x0640::DG5T250800024::INSTR";	//RIGOL_DG5072仪器资源
+call RIGOL_DG5072_Initialize();	// 初始化仪器
+
+//***Demo Geneate 100Hz in cha1
+$Generate_Signal_Freq=100;		//设置频率，以HZ为单位
+$Generate_Signal_Amp=5;		//设置幅值，以Vpp为单位
+$Generate_Signal_DCYCle=25;		//设置占空比，10Mhz下占空比范围20~80
+call RIGOL_DG5072_Channel1_Output();
+
+//***Demo Geneate 3.3V in ch2
+$Generate_Signal_Freq=0.001;		//设置频率，以HZ为单位  占空比为80%， 频率为0.001Hz，会生成一个800s的高电平
+$Generate_Signal_Amp=3.3;		//设置幅值，以Vpp为单位
+$Generate_Signal_DCYCle=75;		//设置占空比，10Mhz下占空比范围20~80
+call RIGOL_DG5072_Channel2_Output();
+OperatorPrompt("OK1","");
+
+//Close the output
+call RIGOL_DG5072_Channel1_OutOff();
+call RIGOL_DG5072_Channel2_OutOff();
+
+//***Demo Geneate 1.8V in ch1
+$Generate_Signal_Freq=0.001;		//设置频率，以HZ为单位	占空比为80%， 频率为0.001Hz，会生成一个800s的高电平
+$Generate_Signal_Amp=1.8;			//设置幅值，以Vpp为单位
+$Generate_Signal_DCYCle=80;		//设置占空比，10Mhz下占空比范围20~80
+call RIGOL_DG5072_Channel1_Output();
+
+//***Demo Geneate 100Hz wave in ch2
+$Generate_Signal_Freq=100;			//设置频率，以HZ为单位
+$Generate_Signal_Amp=5;			//设置幅值，以Vpp为单位
+$Generate_Signal_DCYCle=75;		//设置占空比，10Mhz下占空比范围20~80
+call RIGOL_DG5072_Channel2_Output();
+OperatorPrompt("OK2","");
+
+//***Demo Geneate 1.8V (max 800s ) in ch2
+call RIGOL_DG5072_Channel2_Set_1V8();
+OperatorPrompt("OK3","");
+
+
+//***Demo Geneate 3.3V (max 800s ) in ch2
+call RIGOL_DG5072_Channel2_Set_3V3();	
+OperatorPrompt("OK4","");
+
+//Close the output
+call RIGOL_DG5072_Channel1_OutOff();
+call RIGOL_DG5072_Channel2_OutOff();
+
+call RIGOL_DG5072_Close();	//关闭仪器连接
+
+End;
+
+//初始化RIGOL_DG5072,  预留输出负载设置
+function RIGOL_DG5072_Initialize()										//Initial Instruments
+{
+    UpdateStatus("......RIGOL_DG5072_Initialize");
+    $RIGOL_DG5072_VISA = ReadIniFile($g_System_Config_File,"HW_Config","DG5072_Port ");
+    $RIGOL_DG5072_Handle = NIVISA_Open($RIGOL_DG5072_VISA);		//连接仪器
+    NIVISA_SetTimeout($RIGOL_DG5072_Handle, 2000);				// 设置延时
+    NIVISA_Write($RIGOL_DG5072_Handle,"*RST\n");					//Reset仪器
+    SleepMilliseconds(500);										//RIGOL_DG5072 在RST后必须等待一段时间才能继续发命令，否则会导致仪器通讯卡死 
+    NIVISA_Write($RIGOL_DG5072_Handle,"*IDN?\n");				//获取识别号
+    $RIGOL_DG5072_Buffer = NIVISA_Read($RIGOL_DG5072_Handle);	// 回读信息
+    UpdateStatus($RIGOL_DG5072_Buffer);
+    $RIGOL_DG5072_ID_Flag = StringContains($RIGOL_DG5072_Buffer,"DG5072");
+    if(!$RIGOL_DG5072_ID_Flag)
+    {
+	Abort("RIGOL_DG5072 Query ID Failed!");
+    }
+    if($RIGOL_DG5072_ID_Flag)
+    {
+	UpdateStatus("RIGOL_DG5072 Connect Sucessful\n");
+    }
+    NIVISA_Write($RIGOL_DG5072_Handle,"*CLS\n"); 
+    SleepMilliseconds(100);	
+
+    ////~ NIVISA_Write($RIGOL_DG5072_Handle,"OUTPut1:IMPedance INFinity\n"); 		//初始化将通道输出阻抗设置高阻态，若设置阻值，需要考虑产生波形的幅值分压情况
+    ////~ NIVISA_Write($RIGOL_DG5072_Handle,"OUTPut2:IMPedance INFinity\n"); 
+   
+    return;
+}
+
+
+
+function RIGOL_DG5072_Channel1_Output()								//Initial Instruments
+{
+    
+    //Input:   	$Generate_Signal_Freq	产生的信号频率，以Hz为单位
+    //Input		$Generate_Signal_Amp	产生的信号赋值，以VPP为单位
+    //Input		$Generate_Signal_DCYCle	产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+  
+    UpdateStatus("......RIGOL_DG5072 Channel1 Output");
+    $Set_Channel_Number=1;		//预留的通道设置位致
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":APPly:SQUare "+$Generate_Signal_Freq;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":VOLTage:HIGH "+$Generate_Signal_Amp;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":VOLTage:LOW 0";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":FUNCtion:SQUare:DCYCle "+$Generate_Signal_DCYCle;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+ 
+    $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" ON";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    return;
+}
+
+
+
+function RIGOL_DG5072_Channel_OutOff()								//Initial Instruments
+{
+  //Input $Set_Channel_Number 选择需要关闭的通道号
+    UpdateStatus("......RIGOL_DG5072 Channel OutOff");
+    $Display="-->Current Select Channel "+$Set_Channel_Number+" OFF";
+    
+    $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" OFF";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    return;
+}
+
+//关闭第一通道输出
+function RIGOL_DG5072_Channel1_OutOff()								//Initial Instruments
+{
+    UpdateStatus("......RIGOL_DG5072 Channel1 OutOff");
+    
+    $Set_Channel_Number=1;		//预留的通道设置位致
+    
+    $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" OFF";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    return;
+}
+
+
+
+
+function RIGOL_DG5072_Channel2_Output()								//Initial Instruments
+{
+    //Input:   	$Generate_Signal_Freq	产生的信号频率，以Hz为单位
+    //Input	$Generate_Signal_Amp	产生的信号赋值，以VPP为单位
+    //Input	$Generate_Signal_DCYCle	产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+    UpdateStatus("......RIGOL_DG5072 Channel2 Output");
+    
+    $Set_Channel_Number=2;		//预留的通道设置位致
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":APPly:SQUare "+$Generate_Signal_Freq;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":VOLTage:HIGH "+$Generate_Signal_Amp;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":VOLTage:LOW 0";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    
+    $RIGOL_DG5072_Command=":SOURce"+$Set_Channel_Number+":FUNCtion:SQUare:DCYCle "+$Generate_Signal_DCYCle;
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+ 
+    $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" ON";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    return;
+}
+
+
+
+//二次调用函数，直接设置通道2输出 1.8V，持续800s
+function RIGOL_DG5072_Channel2_Set_1V8()								//Initial Instruments
+{
+    UpdateStatus("\r\n......RIGOL_DG5072 Channel2 Set to 1.8V");
+    $Generate_Signal_Freq=0.00001;		//设置频率，以HZ为单位	占空比为80%， 频率为0.001Hz，会生成一个800s的高电平
+    $Generate_Signal_Amp=1.8;			//设置幅值，以Vpp为单位
+    $Generate_Signal_DCYCle=80;		//设置占空比，10Mhz下占空比范围20~80
+    call RIGOL_DG5072_Channel2_Output();
+    
+    return;
+}
+
+//二次调用函数，直接设置通道2输出 3.3V，持续800s
+function RIGOL_DG5072_Channel2_Set_3V3()								//Initial Instruments
+{
+    UpdateStatus("\r\n......RIGOL_DG5072 Channel2 Set to 3.3V");
+    $Generate_Signal_Freq=0.00001;		//设置频率，以HZ为单位	占空比为80%， 频率为0.001Hz，会生成一个800s的高电平
+    $Generate_Signal_Amp=3.3;			//设置幅值，以Vpp为单位
+    $Generate_Signal_DCYCle=80;		//设置占空比，10Mhz下占空比范围20~80
+    call RIGOL_DG5072_Channel2_Output();
+    return;
+}
+    
+//关闭第二通道输出
+function RIGOL_DG5072_Channel2_OutOff()								//Initial Instruments
+{
+    UpdateStatus("......RIGOL_DG5072 Channel2 OutOff");
+    
+    $Set_Channel_Number=2;		//预留的通道设置位致
+    
+    $RIGOL_DG5072_Command=":OUTPut"+$Set_Channel_Number+" OFF";
+    $Display="[Display]The Command Send-->:"+$RIGOL_DG5072_Command;
+    UpdateStatus($Display);
+    NIVISA_Write($RIGOL_DG5072_Handle,$RIGOL_DG5072_Command); 
+    return;
+}
+
+
+//释放对RIGOL_DG5072的handle 引用
+function RIGOL_DG5072_Close()
+{
+    NIVISA_Write($RIGOL_DG5072_Handle,":SYST:KLOC OFF\n");			//解锁仪器前面板，可以对仪器进行前面板操作
+    UpdateStatus("......RIGOL_DG5072_Connect Close");
+    NIVISA_Close($RIGOL_DG5072_Handle);
+    return;
+}
+    
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~HW Controls Functions DM6510  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+function Init_DM6510()
+{
+    //input:
+	    //1,$DAQ6510_Port
+    //Output:
+	    //1,$g_DAQ6510_Handle
+  
+      UpdateStatus("===================Init DM6510=====================");
+      $DAQ6510_Port = ReadIniFile($g_System_Config_File,"HW_Config","DAQ6510_Port");
+      UpdateStatus($DAQ6510_Port);
+      $timeOut = 2000;          // Time out = 2 seconds.
+      $g_DAQ6510_Handle = NIVISA_Open($DAQ6510_Port,$timeOut);
+     $success= NIVISA_WriteBool($g_DAQ6510_Handle, "*IDN?\r\n");
+      if(!$success)
+      {
+	Abort("DAQ6510 Write Error");
+      }
+      $DMM6500_ReturnString = NIVISA_Read($g_DAQ6510_Handle);
+      UpdateStatus($DMM6500_ReturnString);
+      $success=NIVISA_WriteBool($g_DAQ6510_Handle, "*RST\r\n");
+      if(!$success)
+      {
+	Abort("DAQ6510 Write Error");
+      }
+      SleepMilliseconds(50);
+     $success= NIVISA_WriteBool($g_DAQ6510_Handle, "*CLS");
+      if(!$success)
+      {
+	Abort("DAQ6510 Write Error");
+      }
+      SleepMilliseconds(50);
+      $g_DAQ6510_Read = ":READ?\r\n";
+      if(!$success)
+      {
+	Abort("DAQ6510 Write Error");
+      }
+      UpdateStatus($g_DAQ6510_Handle);
+      UpdateStatus("===================End Init DM6500=====================");
+      return;
+}
+
+function Close_DM6510()
+{
+      //input:
+	      //1,$g_DAQ6510_Handle
+  
+      UpdateStatus("====== CloseDM6500 =========");
+      NIVISA_Close($g_DAQ6510_Handle);
+      UpdateStatus("======= End CloseDM6500 =====");
+      return;
+}
+
+
+function Keysight6510_MeasureCurrent()
+{
+  //input:
+	  //1,$g_DAQ6510_Handle
+	  //2,$Channel
+	  // 3,$Curr_Range
+	  // 3,$Curr_Range
+  //Output:
+	  //1,$DMMRead_Curr
+
+  UpdateStatus("----------------------------- Keysight6510_MeasureCurrent ------------------------------");
+  //SENS:FUNC 'CURR:DC', (@121)\r\n
+  $Set_Current_Meas = "SENS:FUNC 'CURR:DC', (@" + $Channel + ")\r\n";
+  NIVISA_Write($g_DAQ6510_Handle,$Set_Current_Meas); 
+  
+  $Set_Current_Range = $Curr_Range + $Channel + ")\r\n";
+  UpdateStatus($Set_Current_Range);
+  NIVISA_Write($g_DAQ6510_Handle,$Set_Current_Range); 
+  //ROUT:CLOS (@113)\r\n
+  $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+  NIVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+  //SENS:VOLT:RANG 100, (@113)\r\n
+  //~ $Rang = "10";
+  //~ $DAQ6510_VOLT_RANG = "SENS:VOLT:RANG " +$Rang + ", (@" + $Channel + ")\r\n";
+  //~ NIVISA_Write($g_DMM6500_Handle,$DAQ6510_VOLT_RANG); 
+  
+  $Meas_flag = false;
+  $Meas_loop = 0;
+  $g_DAQ6510_Read = ":READ?\r\n";
+  while(!$Meas_flag && $Meas_loop < 5)
+  {
+      NIVISA_Write($g_DAQ6510_Handle,":READ?\r\n"); 
+      $DMMRead_Curr = NIVISA_Read($g_DAQ6510_Handle);
+      //~ $DMMRead_Curr = Round($DMMRead_Curr,3);
+      UpdateStatus($DMMRead_Curr);
+      $Meas_flag =  ($DMMRead_Curr >= $lowerLimit) && ($DMMRead_Curr <= $upperLimit);
+      if(!$Meas_flag)
+      {
+	  SleepMilliseconds(200);
+      }
+      $Meas_loop = $Meas_loop + 1;
+  }
+  return; 
+}
+
+
+function Keysight6510_MeasureDCVoltage()
+{
+      //input:
+	    //1,$g_DAQ6510_Handle
+	    //2,$Channel
+	    // 3,$Rang
+    //Output:
+	    //1,$DMMRead_Vol
+    
+    UpdateStatus("----------------------------- Keysight_DMM_MeasureVoltage ------------------------------"); 
+    //SENS:FUNC 'VOLT', (@113)\r\n
+  NIVISA_WriteBool($g_DAQ6510_Handle, "*CLS");
+    $Set_Voltage_Meas = "SENS:FUNC 'VOLT', (@" + $Channel + ")\r\n";
+  //:DISPlay:VOLT:DC:DIGits 4
+    //~ ":SENS:FUNC ‘VOLTage’ ,(@"+ $Channel +");:SENS:VOLTage:RANG:AUTO ON ,(@"+ $Channel +")\r\n"
+  
+    NIVISA_WriteBool($g_DAQ6510_Handle,$Set_Voltage_Meas); 
+  //:DISPlay:VOLT:DC:DIGits 4
+   
+   NIVISA_WriteBool($g_DAQ6510_Handle,":DISPlay:VOLT:DC:DIGits 4\n"); 
+   //ROUT:CLOS (@113)\r\n
+    $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+    NIVISA_WriteBool($g_DAQ6510_Handle,$Close_Channel); 
+    //SENS:VOLT:RANG 100, (@113)\r\n
+    //~ $Rang = "10";
+    $DAQ6510_VOLT_RANG = "SENS:VOLT:RANG " +$Rang + ", (@" + $Channel + ")\r\n";
+    NIVISA_WriteBool($g_DAQ6510_Handle,$DAQ6510_VOLT_RANG); 
+    
+    NIVISA_WriteBool($g_DAQ6510_Handle,$g_DAQ6510_Read); 
+    $DMMRead_Vol = NIVISA_Read($g_DAQ6510_Handle);
+    $temp="Vol="+$DMMRead_Vol;
+    UpdateStatus($temp);
+    return; 
+  }
+
+
+function Keysight6510_MeasureACVoltage()
+{
+  
+    //input:
+	  //1,$g_DAQ6510_Handle
+	  //2,$Channel
+	  // 3,$Rang
+  //Output:
+	  //1,$DMMRead_ACVol
+  
+  UpdateStatus("----------------------------- Keysight_DMM_MeasureVoltage ------------------------------"); 
+
+  //:SENS:FUNC "VOLTage:AC" ,(@102);:SENS:VOLTage:AC:RANG:AUTO OFF ,(@102);:SENS:VOLTage:AC:RANG 10.000000 ,(@102)
+  $Set_Voltage_Meas = ":SENS:FUNC ‘VOLTage:AC’ ,(@"+ $Channel +");:SENSVOLTage:AC:AUTO OFF ,(@"+ $Channel +");:SENS:VOLTage:AC:RANG"+$Rang+" ,(@"+ $Channel +")\r\n";
+  NIVISA_Write($g_DAQ6510_Handle,$Set_Voltage_Meas); 
+  
+  //ROUT:CLOS (@113)\r\n
+  $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+  NIVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+  
+  $Meas_flag = false;
+  $Meas_loop = 0;
+  while(!$Meas_flag && $Meas_loop < 3)
+  {
+      NIVISA_Write($g_DAQ6510_Handle,$g_DAQ6510_Read); 
+      $DMMRead_Vol = NIVISA_Read($g_DAQ6510_Handle);
+      //~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+      UpdateStatus($DMMRead_ACVol);
+      $Meas_flag =  ($DMMRead_ACVol >= $lowerLimit) && ($DMMRead_ACVol <= $upperLimit);
+      if(!$Meas_flag)
+      {
+	  SleepMilliseconds(300);
+      }
+      $Meas_loop = $Meas_loop + 1;
+  }
+  return; 
+}
+
+
+
+
+function Keysight6510_MeasureResistance()
+{
+  //input:
+	  //1,		$g_DAQ6510_Handle
+	  //2,	$Channel
+	  //3,	$Res_Range
+  
+  //Output:
+	  //1,		$DMMRead_Res
+    
+    UpdateStatus("----------------------------- Keysight6510_MeasureResistance ------------------------------"); 
+    //SENS:FUNC 'VOLT', (@113)\r\n
+    $Set_Resistance_Meas = "SENS:FUNC 'RES', (@" + $Channel + ")\r\n";
+    NIVISA_Write($g_DAQ6510_Handle,$Set_Resistance_Meas); 
+    //ROUT:CLOS (@113)\r\n
+    $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\r\n";
+    NIVISA_Write($g_DAQ6510_Handle,$Close_Channel); 
+    //SENS:VOLT:RANG 100, (@113)\r\n
+    //~ $Rang = "10";
+    $DAQ6510_RES_RANG = "SENS:RES:RANG " +$Res_Range + ", (@" + $Channel + ")\r\n";
+    NIVISA_Write($g_DAQ6510_Handle,$DAQ6510_RES_RANG); 
+    
+    $Meas_flag = false;
+    $Meas_loop = 0;
+    //~ $g_DAQ6510_Read = ":READ?\r\n";
+    while(!$Meas_flag && $Meas_loop < 1)
+    {
+	NIVISA_Write($g_DAQ6510_Handle,":READ?\r\n"); 
+	$DMMRead_Res = NIVISA_Read($g_DAQ6510_Handle);
+	//~ $DMMRead_Vol = Round($DMMRead_Vol,3);
+	UpdateStatus($DMMRead_Res);
+	$Meas_flag =  ($DMMRead_Res >= $lowerLimit) && ($DMMRead_Res <= $upperLimit);
+	if(!$Meas_flag)
+	{
+	    SleepMilliseconds(300);
+	}
+	$Meas_loop = $Meas_loop + 1;
+    }
+    $Open_Channel = "ROUT:OPEN (@" + $Channel + ")\r\n";
+    NIVISA_Write($g_DAQ6510_Handle,$Open_Channel); 
+    return; 
+}
+
+
+function Keysight6510_MeasureFreq()
+{
+  //input:
+	  //1,	$g_DAQ6510_Handle
+	  //2,	$Channel
+  //Output:
+	  //1,		$DMMRead_FREQ
+    
+    UpdateStatus("----------------------------- Keysight6510_MeasureFreq ------------------------------"); 
+    //:SENS:FUNC "FREQuency" ,(@102)\r\n
+    NIVISA_WriteBool($g_DAQ6510_Handle, "*CLS");
+    $Set_FREQ_Meas = ":SENS:FUNC 'FREQuency',(@"+$Channel+")\n";
+
+    ($VISA_Write_Result)=NIVISA_WriteBool($g_DAQ6510_Handle,$Set_FREQ_Meas); 
+    UpdateStatus($VISA_Write_Result);
+  
+    $Close_Channel = "ROUT:CLOS (@" + $Channel + ")\n";
+    ($VISA_Write_Result)= NIVISA_WriteBool($g_DAQ6510_Handle,$Close_Channel); 
+    UpdateStatus($VISA_Write_Result);
+    SleepMilliseconds(100);
+    ($VISA_Write_Result)= NIVISA_WriteBool($g_DAQ6510_Handle,":READ?\n"); 
+    UpdateStatus($VISA_Write_Result);
+    SleepMilliseconds(100);
+    $success=false;
+    $VISA_READ_LOOP=0;
+    while($success==false && $VISA_READ_LOOP<10)
+    {
+          ($DMMRead_FREQ,$success) =  NIVISA_ReadBool($g_DAQ6510_Handle);
+	  UpdateStatus($DMMRead_FREQ);
+	UpdateStatus($success);
+	  $VISA_READ_LOOP=$VISA_READ_LOOP+1;
+	  SleepMilliseconds(50);
+    }
+    $Open_Channel = "ROUT:OPEN (@" + $Channel + ")\r\n";
+    NIVISA_Write($g_DAQ6510_Handle,$Open_Channel); 
+    return; 
+}

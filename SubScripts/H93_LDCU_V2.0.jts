@@ -1,0 +1,2823 @@
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Digital_IO INPUT~~~~~~~~~~~~~~~~~~~~~~~~~
+function SUB_Read_Digital_Input()
+{
+    UpdateStatus("Read_Digital_input Start\r\n");
+    
+    $$Digital_Rev_Binary_String="";  	//返回的bit数据结果
+    $Digital_input_Data_Length=8;		//定义返回的测试结果字节长度
+    $CAN_Send_Msg = "04 31 03 C0 80 CC CC CC";
+    $CAN_Rev_ExpMsg = "71 03 C0 80";	
+    //~ $MeasurementName = "Read_Digital_input";
+
+     $CANFD_SEND_LOOP=3;
+     $Rev_Delay =20;
+    call CANFD_SendMillisecondsMultiWait();
+    if(!$Result)
+    {
+      Fail("Read DI Data Fail");
+    }
+    $CAN_Rev_Msg = StringParse($CAN_Rev_Msg, $CAN_Rev_ExpMsg, "AA"); 
+    $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg);
+    UpdateStatus($CAN_Rev_Msg);
+
+    $CAN_Rev_Msg_array = StringSplitToArray($CAN_Rev_Msg," ",8);//rev xto array
+    $Rev_Msg_array_Len = ArrayGetLength($CAN_Rev_Msg_array);
+    //~ UpdateStatus($Rev_Msg_array_Len);
+    //$BinaryString_array = Array1DCreate("String",$_data_Len );
+    //~ $Report_Mark_SendMessage_Enable=true;  //记录发送数据的Mark标志位,若为true 则记录
+    //~ $Report_Mark_ReceiveMessage_Enable=true;  //记录接收数据的Mark标志位, 若为true则记录
+    if($Report_Mark_SendMessage_Enable)
+    {
+      $measName="DI_SEND_DATA";
+      RecordMeasurementPassFail($measName, $CAN_Send_Msg, "Bool", true,true );
+    }
+     if($Report_Mark_ReceiveMessage_Enable)
+    {
+      $Result = NumericComparison($Rev_Msg_array_Len,$Digital_input_Data_Length,"==");
+      $measName="DI_RECE_DATA_LENGTH";
+      RecordMeasurementPassFail($measName, $Rev_Msg_array_Len, "Bool", true,$Result );
+      $measName="DI_RECE_DATA";
+      RecordMeasurement($measName, $CAN_Rev_Msg, "NA", true); 
+    }
+    if($Result)
+    {
+	$Loop = 0;
+	$Digital_Rev_Binary_String = "";
+	while($Loop < $Rev_Msg_array_Len)
+	{
+	    $Index_data = Array1DGetValue($CAN_Rev_Msg_array,$Loop);
+	    $BinaryString_data = HexStringToBinaryStringSpecifyWidth($Index_data,1);// Example: FF to 11111111 
+	  
+	    //~ $temp= "Befor=" + $BinaryString_data;
+	    //~ UpdateStatus($temp);
+	    //~ OperatorPrompt($temp, "Befor");
+	    $BinaryString_data = StringReverse($BinaryString_data);//倒置  0x123 to 0x321
+	    //~ $temp= "After=" + $BinaryString_data;
+	    //~ UpdateStatus($temp);
+	    //~ OperatorPrompt($temp, "After");
+	    //~ UpdateStatus($BinaryString_data);
+	    //Array1DSetValue($BinaryString_array,$Loop,$BinaryString_data);
+	    $Digital_Rev_Binary_String =$Digital_Rev_Binary_String+ $BinaryString_data;
+	    $Loop = $Loop+1;
+	    SleepMilliseconds(1);		
+	}
+	//~ RecordMeasurementPassFail($MeasurementName, $Digital_Rev_Binary_String, "Bool", true, $Result);
+	UpdateStatus($Digital_Rev_Binary_String);
+    }
+    UpdateStatus("Read_Digital_input End\r\n");
+    return;
+}
+
+
+function Digital_IN_UNLOADING_TEST()
+{
+    //通过循环测试每个DI
+    //读取所有的Di状态,Read_Digital_IO_By_PIN 将调用这个function
+    // 这个function 将返回一个64bit字符串 变量($Digital_Rev_Binary_String),每个bit代表一个DI的状态,
+  
+      SetTestName("Digital-IN_NC");
+      $worksheet = 2; //shell DI
+      $startcolumn = "A";
+      $startRow = 3;
+      $endColumn = "P";
+      $endRow = 42;
+      $Temp="Read excel worksheet is "+$worksheet+" \nstart column is "+$startcolumn+"\nstart Row is "+$startRow+"\nend Column is "+$endColumn+"\nend Row is "+$endRow;
+      UpdateStatus($Temp);
+      //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+      call LoadExcelConfigFile(); //return array ()
+       // ~~~~~~~~~~State1 set the Unload to pin~~~~~~~~~~~~~~~~
+     
+      // 读取DI 的状态
+      call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+      SleepMilliseconds(1000);
+      call SUB_Read_Digital_Input(); 
+      // 循环获取所有的DI结果
+      $rows_Loop=0;
+      while($rows_Loop < $rows_Length)
+      {
+	// Loading Config info
+	$rowArray 			= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	
+	$DI_PIN				=Array1DGetValue($rowArray ,0);
+	$DI_Function			=Array1DGetValue($rowArray ,1);
+	$DI_singal_type			=Array1DGetValue($rowArray ,2);	
+	$DI_remark				=Array1DGetValue($rowArray ,3);
+	$DI_Load				=Array1DGetValue($rowArray ,4);
+	$DI_StartBit			=Array1DGetValue($rowArray ,5);	
+	$DI_State1_LIMIT		=Array1DGetValue($rowArray ,6);	
+	$DI_State2_LIMIT		=Array1DGetValue($rowArray ,7);
+	
+	$State1_info			=Array1DGetValue($rowArray ,8);
+	//~ $DI_Board_NO_relay_Start1	=Array1DGetValue($rowArray ,9);
+	$DI_LoadboxCMD_State1	=Array1DGetValue($rowArray ,10);
+	
+	$State2_info			=Array1DGetValue($rowArray ,11)
+	//~ $DI_Board_NO_relay_Start2 =Array1DGetValue($rowArray ,12);
+	$DI_LoadboxCMD_State2	=Array1DGetValue($rowArray ,13);	
+	
+	$DI_TestEnable			=Array1DGetValue($rowArray ,14);
+	$DI_ParallelTest			=Array1DGetValue($rowArray ,15);																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																												
+
+	//Show Pin info
+	$Display="\r\n********rows_Loop is:"+$rows_Loop+"*******The command is below*****"+"\r\n DI_Pin is:"+$DI_PIN+"\r\n DI_Function is:"+$DI_Function+"\r\n DI_LoadboxCMD_State1 is:"+$DI_LoadboxCMD_State1+"\r\n DI_LoadboxCMD_State2 is:"+$DI_LoadboxCMD_State2;
+       UpdateStatus($Display);
+       
+	//检查本步骤是否测试，若不测试将直接return，
+	$DI_TestEnable = NumericComparison($DI_TestEnable, 1, "==");
+	$Temp = "DI_TestEnable="+$DI_TestEnable;
+	UpdateStatus($Temp);
+	 
+	if($DI_TestEnable==true)
+	{
+	  // Set MeasurementName by PIN
+	  $measName = $DI_PIN+"-NC";
+	  UpdateStatus($measName);
+	  // Read Result form $Digital_Rev_Binary_String (Length is 1 bit)
+	  $ResultBit = StringSub($Digital_Rev_Binary_String,$DI_StartBit,1); 
+	  // check Readult 
+	  RecordMeasurementWithLimits($measName, $ResultBit, "NA", true, $DI_State1_LIMIT, $DI_State1_LIMIT, true);
+	}
+	$rows_Loop=$rows_Loop+1;
+      }
+      return;
+}																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																														
+
+function Digital_IN_LOADING_TEST()
+{
+    //通过循环测试每个DI
+    //读取所有的Di状态,Read_Digital_IO_By_PIN 将调用这个function
+    // 这个function 将返回一个64bit字符串 变量($Digital_Rev_Binary_String),每个bit代表一个DI的状态,
+      
+      SetTestName("Digital-IN_Loading");
+      $worksheet = 2; //shell DI
+      $startcolumn = "A";
+      $startRow = 3;
+      $endColumn = "P";
+      $endRow = 42;
+      $Temp="Read excel worksheet is "+$worksheet+" \nstart column is "+$startcolumn+"\nstart Row is "+$startRow+"\nend Column is "+$endColumn+"\nend Row is "+$endRow;
+      UpdateStatus($Temp);
+      //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+      call LoadExcelConfigFile(); //return array ()
+       // ~~~~~~~~~~State1 set the Unload to pin~~~~~~~~~~~~~~~~
+      
+      // 循环获取所有的DI结果
+      // ~~~~~~~~~~State2 set the load to pin~~~~~~~~~~~~~~~~~~
+      $rows_Loop=0;
+      while($rows_Loop < $rows_Length)
+      {
+	// Loading Config info
+	$rowArray 			= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	
+	$DI_PIN					=Array1DGetValue($rowArray ,0);
+	$DI_Function				=Array1DGetValue($rowArray ,1);
+	$DI_singal_type			=Array1DGetValue($rowArray ,2);	
+	$DI_remark				=Array1DGetValue($rowArray ,3);
+	$DI_Load					=Array1DGetValue($rowArray ,4);
+	$DI_StartBit				=Array1DGetValue($rowArray ,5);	
+	$DI_State1_LIMIT			=Array1DGetValue($rowArray ,6);	
+	$DI_State2_LIMIT			=Array1DGetValue($rowArray ,7);
+	
+	$State1_info				=Array1DGetValue($rowArray ,8);
+	//~ $DI_Board_NO_relay_Start1	=Array1DGetValue($rowArray ,9);
+	$DI_LoadboxCMD_State1	=Array1DGetValue($rowArray ,10);
+	
+	$State2_info				=Array1DGetValue($rowArray ,11)
+	//~ $DI_Board_NO_relay_Start2 =Array1DGetValue($rowArray ,12);
+	$DI_LoadboxCMD_State2	=Array1DGetValue($rowArray ,13);	
+	
+	$DI_TestEnable			=Array1DGetValue($rowArray ,14);
+	$DI_ParallelTest			=Array1DGetValue($rowArray ,15);																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																												
+
+	//Show Pin info
+	//检查本步骤是否测试，若不测试将直接return，
+	
+	$DI_TestEnable = NumericComparison($DI_TestEnable, 1, "==");
+	$Temp = "DI_TestEnable="+$DI_TestEnable;
+	UpdateStatus($Temp);
+	call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+	if($DI_TestEnable==true)
+	{
+	    $View_TXT_String=$DI_PIN+" "+$DI_Function+"Load On DI_TEST";
+	    call Method_View_TXT_Process_Main(); 
+	  //Check for parallel testing
+	  $DI_ParallelTest = NumericComparison($DI_ParallelTest, 1, "==");
+	  $Temp = "ParallelTest="+$DI_ParallelTest;
+	  UpdateStatus($Temp);
+	  
+	  // 如果不是并行测试项目，将再次却换继电器然后读取DI Data，反之直接读取之前的AI状态
+	  if(!$DI_ParallelTest)
+	  {
+	    //call set load box to state2
+	    $result = Serial_SendMilliseconds($g_LoadBox_Handle,$DI_LoadboxCMD_State2,"OK",500);
+	    $result="LoadBox Set State2: "+$DI_LoadboxCMD_State2+" "+$result;
+	    UpdateStatus($result);
+	    SleepMilliseconds(500);
+	    call SUB_Read_Digital_Input();  // 读取DI 的状态
+	  }
+
+	  // Set MeasurementName by PIN
+	  $measName = $DI_PIN+"-"+$State2_info;
+	  UpdateStatus($measName);
+	  // Read Result form $Digital_Rev_Binary_String (Length is 1 bit)
+	  $ResultBit = StringSub($Digital_Rev_Binary_String,$DI_StartBit,1); 
+	  // check Readult 
+	  RecordMeasurementWithLimits($measName, $ResultBit, "NA", true, $DI_State2_LIMIT, $DI_State2_LIMIT, true);
+	  	  //DI Test bebug 标志位
+	  if($g_DI_TestDebug)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $_DI_Test_PASS=  NumericComparison($DI_State2_LIMIT,$ResultBit,"==");
+	    if(!$_DI_Test_PASS)
+	    {
+	      $temp = $DI_PIN+" DI_loading;Please measure the PIN voltage,Click OKCancel to continue";
+	      $TestContinue = OperatorPrompt($temp, "OKCancel");
+	      $Result = StringComparison($TestContinue,"Cancel","==");
+	      if( $Result==true)
+	      {
+		StopTestCell($CellNumber);
+	      }
+	    }
+	  }
+	  
+	}
+	$rows_Loop=$rows_Loop+1;
+      }
+      return;
+}																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																														
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Digital OUTPUT~~~~~~~~~~~~~~~~~~~~~~~~~~
+function DUT_ALL_DO_Off()
+{
+    
+  $View_TXT_String="DUT_DO_OFF";
+  call Method_View_TXT_Process_Main();
+  $CAN_Send_Msg="00 10 31 01 C0 81 00 00 00 00 00 00 00 00 00 00 00 00 CC CC"; 
+  $CAN_Rev_ExpMsg = "04 71 01 C0 81";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay =30;
+  call CANFD_SendMillisecondsMultiWait();
+  if($Report_Mark_SendMessage_Enable)
+  {
+    $MeasName = "ALL_DO_OFF_SEND";
+    RecordMeasurementPassFail($MeasName, $CAN_Send_Msg, "Bool", true, true);
+  }
+  if($Report_Mark_ReceiveMessage_Enable)
+  {
+    $MeasName = "ALL_DO_OFF_RECE";
+    RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
+  }
+    return;
+}
+
+function Digital_OUT_OFF_TEST() 
+{
+   UpdateStatus("~~~ DigitalOut_TEST Start ~~~\r\n");
+    SetTestName("Digital-OUT");
+    // load config files
+    $worksheet = 6; //shell DO
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "O";
+    $endRow = 54;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    //~ OperatorPrompt("测试前关闭所有DO输出done", "OK");
+    call DUT_ALL_DO_Off();     // 关闭产品DO输出
+    call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+   // 开始循环测试
+  
+    $rows_Loop =0;
+    //~ OperatorPrompt("开始循环测试", "OK");
+    while($rows_Loop < $rows_Length)
+      {
+	// Loading Config info
+	$rowArray 			= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$DO_PIN				=Array1DGetValue($rowArray ,0);
+	$DO_Funtion			=Array1DGetValue($rowArray ,1);
+	$DO_SingalType		=Array1DGetValue($rowArray ,2);
+	$DO_Remark			=Array1DGetValue($rowArray ,3);
+      	$StartBit				=Array1DGetValue($rowArray ,5);
+	
+	$LoadBox_CMD		=Array1DGetValue($rowArray ,6);
+	$DMM_CH			=Array1DGetValue($rowArray ,7);
+	$DO_Off_LSL			=Array1DGetValue($rowArray ,8);
+	$DO_Off_USL			=Array1DGetValue($rowArray ,9);
+	$DO_On_LSL			=Array1DGetValue($rowArray ,10);
+	$DO_On_USL			=Array1DGetValue($rowArray ,11);  
+    	$DO_TestEnable		=Array1DGetValue($rowArray ,12);
+	$DO_ParallelTest		=Array1DGetValue($rowArray ,13);  
+      	// show row info
+	//检查当前步骤是否测试这个步骤
+	$DO_TestEnable = NumericComparison($DO_TestEnable,"1", "==");
+	$Temp = "DO_PINTestEnable="+$DO_TestEnable;
+	UpdateStatus($Temp);
+	if($DO_TestEnable==true)
+	{
+	  //~~~~~~~~~~~~~~~~~~DO On test~~~~~~~~~~~~~~~~~~~~~~
+	  //Set test Name
+	  $MeasName = $DO_PIN+"_DO-Off";
+	  // show TestName
+	  $TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
+	  UpdateStatus($TempMsg);
+	  //Check for parallel testing
+	  $DO_ParallelTest = NumericComparison($DO_ParallelTest, 1, "==");
+	  $Temp = "ParallelTest="+$DO_ParallelTest;
+	  UpdateStatus($Temp);
+	  if($DO_ParallelTest==false)  //检查是否并行测试，如果不是并行测试将执行切换继电器和发送DO CMD
+	  {
+	    //~ // call Load box SW 加载负载
+	    $LoadBox_CMD=StringTrim($LoadBox_CMD);
+	    if($LoadBox_CMD !="N/A") // 如果是NA说明是直连负载不通过开关
+	    {
+	      $result = Serial_SendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
+	      $result = StringTrim($result);
+	      $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
+	      UpdateStatus($result);
+	      SleepMilliseconds(5);
+	    }
+	  }
+	  //~ // call DMM test Vol
+	  //input:
+	  $Channel = CopyVariable($DMM_CH);
+	  $Rang="100";
+	  $lowerLimit = CopyVariable($DO_Off_LSL);
+	  $upperLimit = CopyVariable($DO_Off_USL);
+	  //Output:
+	  $DMMRead_Vol=0;
+	  call Keysight6510_MeasureDCVoltage();
+	  //DO Test bebug 标志位
+	  if($g_DO_TestDebug==true)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $temp = $MeasName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
+	  }
+
+	  //check Test limit
+	
+	  $measureName=$MeasName+"_Vol";
+	    UpdateStatus($measureName);
+	  $inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
+	  if($inLimits)
+	  {
+	    $DMMRead_Vol  = Abs($DMMRead_Vol);
+	  }
+	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true,  $DO_Off_LSL, $DO_Off_USL, true);
+	  $TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	  UpdateStatus($TempMsg);
+	  //~~~~~~~~~~~~~~~~~~DO Off test~~~~~~~~~~~~~~~~~~~~~~
+	  call DUT_ALL_DO_Off();     // 关闭产品DO输出
+	  call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+	  $TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	  UpdateStatus($TempMsg);
+	}
+	  $rows_Loop=$rows_Loop+1;
+	}
+    UpdateStatus("~~~ DigitalOut_OFF_TEST END ~~~\r\n");
+    return;
+  }
+ 
+function Digital_OUT_ON_TEST()
+{
+   UpdateStatus("~~~ DigitalOut_TEST Start ~~~\r\n");
+    SetTestName("Digital-OUT");
+    // load config files
+    $worksheet = 6; //shell DO
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "O";
+    $endRow = 54;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    //~ OperatorPrompt("测试前关闭所有DO输出done", "OK");
+    call DUT_ALL_DO_Off();     // 关闭产品DO输出
+    call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+   // 开始循环测试
+  
+    $rows_Loop =0;
+    //~ OperatorPrompt("开始循环测试", "OK");
+    
+    while($rows_Loop < $rows_Length)
+  {
+	// Loading Config info
+	$rowArray 			= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$DO_PIN				=Array1DGetValue($rowArray ,0);
+	$DO_Funtion			=Array1DGetValue($rowArray ,1);
+	$DO_SingalType		=Array1DGetValue($rowArray ,2);
+	$DO_Remark			=Array1DGetValue($rowArray ,3);
+      	$StartBit				=Array1DGetValue($rowArray ,5);
+	
+	$LoadBox_CMD		=Array1DGetValue($rowArray ,6);
+	$DMM_CH			=Array1DGetValue($rowArray ,7);
+	$DO_Off_LSL			=Array1DGetValue($rowArray ,8);
+	$DO_Off_USL			=Array1DGetValue($rowArray ,9);
+	$DO_On_LSL			=Array1DGetValue($rowArray ,10);
+	$DO_On_USL			=Array1DGetValue($rowArray ,11);  
+    	$DO_TestEnable		=Array1DGetValue($rowArray ,12);
+	$DO_ParallelTest		=Array1DGetValue($rowArray ,13);  
+      	// show row info
+	//检查当前步骤是否测试这个步骤
+	$DO_TestEnable = NumericComparison($DO_TestEnable,1, "==");
+	$Temp = "DO_PIN TestEnable="+$DO_TestEnable;
+	UpdateStatus($Temp);
+	if($DO_TestEnable== true)
+	{
+	  //~~~~~~~~~~~~~~~~~~DO On test~~~~~~~~~~~~~~~~~~~~~~
+	  //Set test Name
+	  $MeasName = $DO_PIN+"_SetDO-ON";
+	  // show TestName
+	  $TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
+	  UpdateStatus($TempMsg);
+	  //Check for parallel testing
+	  $DO_ParallelTest = NumericComparison($DO_ParallelTest, 1, "==");
+	  $Temp = "ParallelTest="+$DO_ParallelTest;
+	  UpdateStatus($Temp);
+	  if($DO_ParallelTest==false)  //检查是否并行测试，如果不是并行测试将执行切换继电器和发送DO CMD
+	  {
+	    //~ // call Load box SW 加载负载
+	    $LoadBox_CMD=StringTrim($LoadBox_CMD);
+	    if($LoadBox_CMD !="N/A") // 如果是NA说明是直连负载不通过开关
+	    {
+	      $result = Serial_SendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
+	      $result = StringTrim($result);
+	      $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
+	      UpdateStatus($result);
+	      SleepMilliseconds(5);
+	    }
+	  }
+	  
+	  // Generate DUT Command
+	  $CMD_Byte_Length=12;   // 有效地DO数据是12 个字节
+	  call SUB_Get_DO_CMD();	   //自动生成CMD
+	  $CAN_Send_Msg ="00 10 31 01 C0 81"+$CMD+" CC CC"; //拼接CMD
+	  $CAN_Rev_ExpMsg = "04 71 01 C0 81";
+	  $TempMsg = "DO-Command = "+$CAN_Send_Msg+"\n";
+	  UpdateStatus($TempMsg);
+	  //send can msg to DUT
+	  $CAN_LOOP=0;
+	  $Result=false;
+	  while(!$Result && $CAN_LOOP<3)
+	  {
+		  call ZLG_CANFD_Send();
+		  UpdateStatus($CAN_Send_Msg);
+		  SleepMilliseconds(500);
+		  //~ OperatorPrompt("send can msg Done", "OK");
+		  call ZLG_CANFD_Rev();
+		  UpdateStatus($CAN_Rev_Msg);
+		  // Check CAN Result
+		  $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+		  SleepMilliseconds(20);
+		  $CAN_LOOP=$CAN_LOOP+1;
+	  }
+	  RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
+	  //~ // call DMM test Vol
+	  //input:
+	  SleepMilliseconds(100);
+	  $Channel = CopyVariable($DMM_CH);
+	  $Rang="100";
+	  $lowerLimit = CopyVariable($DO_On_LSL);
+	  $upperLimit = CopyVariable($DO_On_USL);
+	  //Output:
+	  $DMMRead_Vol=0;
+	  call Keysight6510_MeasureDCVoltage();
+	  //DO Test bebug 标志位
+	  if($g_DO_TestDebug==true)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $temp = $MeasName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
+	  }
+	  //check Test limit
+	  $measureName=$MeasName+"_Vol";
+	  
+	  $inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
+	  if($inLimits)
+	  {
+	    $DMMRead_Vol  = Abs($DMMRead_Vol);
+	  }
+	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
+	  $TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	  UpdateStatus($TempMsg);
+	  //~~~~~~~~~~~~~~~~~~DO Off test~~~~~~~~~~~~~~~~~~~~~~
+	  call DUT_ALL_DO_Off();     // 关闭产品DO输出
+	  call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+	  $TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	  UpdateStatus($TempMsg);
+	  
+	  
+	  
+	}
+	$rows_Loop=$rows_Loop+1;
+  }
+    UpdateStatus("~~~ DigitalOut_TEST END ~~~\r\n");
+    return;
+}
+
+function Digital_OUT_TEST()  
+{
+    $View_TXT_String="Digital_OUT_TEST";
+    call Method_View_TXT_Process_Main(); 
+    SetTestName("Digital-OUT");
+    // load config files
+    $worksheet = 6; //shell DO
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "O";
+    $endRow = 57;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    //~ OperatorPrompt("测试前关闭所有DO输出done", "OK");
+    call DUT_ALL_DO_Off();     // 关闭产品DO输出
+    call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+   // 开始循环测试
+  
+    $rows_Loop =0;
+    //~ OperatorPrompt("开始循环测试", "OK");
+    
+    while($rows_Loop < $rows_Length)
+  {
+	// Loading Config info
+	$rowArray 					= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$DO_PIN					=Array1DGetValue($rowArray ,0);
+	$DO_Funtion				=Array1DGetValue($rowArray ,1);
+	$DO_SingalType				=Array1DGetValue($rowArray ,2);
+	$DO_Remark				=Array1DGetValue($rowArray ,3);
+      	$StartBit					=Array1DGetValue($rowArray ,5);
+	
+	$LoadBox_CMD				=Array1DGetValue($rowArray ,6);
+	$DMM_CH					=Array1DGetValue($rowArray ,7);
+	$DO_Off_LSL				=Array1DGetValue($rowArray ,8);
+	$DO_Off_USL				=Array1DGetValue($rowArray ,9);
+	$DO_On_LSL				=Array1DGetValue($rowArray ,10);
+	$DO_On_USL				=Array1DGetValue($rowArray ,11);  
+    	$DO_TestEnable				=Array1DGetValue($rowArray ,12);
+	$DO_ParallelTest				=Array1DGetValue($rowArray ,13);  
+      	// show row info
+	//检查当前步骤是否测试这个步骤
+	$DO_TestEnable = NumericComparison($DO_TestEnable,1, "==");
+	$Temp = "DO_PIN TestEnable="+$DO_TestEnable;
+	UpdateStatus($Temp);
+	if($DO_TestEnable== true)
+	{
+	  //~~~~~~~~~~~~~~~~~~DO On test~~~~~~~~~~~~~~~~~~~~~~
+	  // show TestName
+	  $View_TXT_String=$DO_PIN+" "+$DO_Funtion+" DO_ON";
+	  call Method_View_TXT_Process_Main(); 
+	  //Check for parallel testing
+	  $DO_ParallelTest = NumericComparison($DO_ParallelTest, 1, "==");
+	  $Temp = "ParallelTest="+$DO_ParallelTest;
+	  UpdateStatus($Temp);
+	  if($DO_ParallelTest==false)  //检查是否并行测试，如果不是并行测试将执行切换继电器和发送DO CMD
+	  {
+	    //~ // call Load box SW 加载负载
+	    $LoadBox_CMD=StringTrim($LoadBox_CMD);
+	    if($LoadBox_CMD !="N/A") // 如果是NA说明是直连负载不通过开关
+	    {
+	      $result = Serial_SendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
+	      $result = StringTrim($result);
+	      $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
+	      UpdateStatus($result);
+	      SleepMilliseconds(5);
+	    }
+	  }
+	  // ~~~~~~~~~~~~~~~~Generate DUT Command~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  $CMD_Byte_Length=12;   // 有效地DO数据是12 个字节
+	  call SUB_Get_DO_CMD();	   //自动生成CMD
+	  $CAN_Send_Msg ="00 10 31 01 C0 81"+$CMD+" CC CC"; //拼接CMD
+	  $CAN_Rev_ExpMsg = "04 71 01 C0 81";
+	  $CANFD_SEND_LOOP=3;
+	  $Rev_Delay =100;   	   //befor send 100ms
+	  call CANFD_SendMillisecondsMultiWait();
+  
+	  if($Report_Mark_SendMessage_Enable)
+	  {
+	    $MeasName = "SET "+$DO_PIN+" DO_ON_SEND";
+	    RecordMeasurementPassFail($MeasName, $CAN_Send_Msg, "Bool", true, true);
+	  }
+	  if($Report_Mark_ReceiveMessage_Enable)
+	  {
+	    $MeasName = "SET "+$DO_PIN+" DO_ON_RECE";
+	    RecordMeasurementPassFail($MeasName, $CAN_Rev_Msg, "Bool", true, $Result);
+	  }
+	  //~ // call DMM test Vol
+	  //input:
+	  SleepMilliseconds(500);
+	  $Channel = CopyVariable($DMM_CH);
+	  $Rang="100";
+	  $lowerLimit = CopyVariable($DO_On_LSL);
+	  $upperLimit = CopyVariable($DO_On_USL);
+	  //Output:
+	  $DMMRead_Vol=0;
+	  call Keysight6510_MeasureDCVoltage();
+	  //check Test limit
+	  $measureName=$DO_PIN+" DO_ON_VOL";
+	  $inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
+	  if($inLimits)
+	  {
+	    $DMMRead_Vol  = Abs($DMMRead_Vol);
+	  }
+	  if(!$inLimits)
+	  {
+	    $DMMRead_Vol  = Add($DMMRead_Vol,0.5);
+	  }
+	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
+	  $_DO_Test_PASS=  NumericLimitTestBool($DMMRead_Vol, $DO_On_LSL, $DO_On_USL);
+	  //DO Test bebug 标志位
+	  if($g_DO_TestDebug==true)
+	  {
+	    if(!$_DO_Test_PASS)
+	    {
+	      //进入这个case 可以测试当前pin 的电压
+	      $temp = $MeasName+" DO ON;Please measure the PIN voltage,Click OKCancel to continue";
+	      $TestContinue = OperatorPrompt($temp, "OKCancel");
+	      $Result = StringComparison($TestContinue,"Cancel","==");
+	      if( $Result==true)
+	      {
+		StopTestCell($CellNumber);
+	      }
+	    }
+	  }
+	  //~~~~~~~~~~~~~~~~~~DO Off test~~~~~~~~~~~~~~~~~~~~~~
+	  
+	  call DUT_ALL_DO_Off();     // 关闭产品DO输出
+	  $View_TXT_String=$measureName+"SW Reset";
+	  call View_TXT_STEP_MSG(); //View_TXT_String
+	  $View_TXT_String=$DO_PIN+" "+$DO_Funtion+" DO_OFF";
+	  call Method_View_TXT_Process_Main(); 
+	  //~ // call DMM test Vol
+	  //input:
+	  $Channel = CopyVariable($DMM_CH);
+	  $Rang="100";
+	  $lowerLimit = CopyVariable($DO_Off_LSL);
+	  $upperLimit = CopyVariable($DO_Off_USL);
+	  //Output:
+	  $DMMRead_Vol=0;
+	  call Keysight6510_MeasureDCVoltage();
+	  //check Test limit
+	  $measureName=$DO_PIN+" DO_OFF_VOL";
+	    UpdateStatus($measureName);
+	  $inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
+	  if($inLimits)
+	  {
+	    $DMMRead_Vol  = Abs($DMMRead_Vol);
+	  }
+	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true,  $DO_Off_LSL, $DO_Off_USL, true);
+	    $_DO_Test_PASS=  NumericLimitTestBool($DMMRead_Vol, $DO_Off_LSL, $DO_Off_USL);
+	  //DO Test bebug 标志位
+	  if($g_DO_TestDebug==true)
+	  {
+	    if(!$_DO_Test_PASS)
+	    {
+	      //进入这个case 可以测试当前pin 的电压
+	      $temp = $MeasName+" DO OFF,Please measure the PIN voltage,Click OKCancel to continue";
+	      $TestContinue = OperatorPrompt($temp, "OKCancel");
+	      $Result = StringComparison($TestContinue,"Cancel","==");
+	      if( $Result==true)
+	      {
+		StopTestCell($CellNumber);
+	      }
+	    }
+	  }
+	}
+	call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+	$rows_Loop=$rows_Loop+1;
+  }
+    return;
+}
+
+function Digital_OUT_FIX_TEST()
+{
+   UpdateStatus("~~~ Digital_OUT_FIX_TEST Start ~~~\r\n");
+    SetTestName("Digital-OUT");
+    // load config files
+    $worksheet = 6; //shell DO
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "O";
+    $endRow = 54;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    //~ OperatorPrompt("测试前关闭所有DO输出done", "OK");
+    call DUT_ALL_DO_Off();     // 关闭产品DO输出
+    call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+   // 开始循环测试
+  
+    $rows_Loop =0;
+    //~ OperatorPrompt("开始循环测试", "OK");
+    
+    while($rows_Loop < $rows_Length)
+  {
+	// Loading Config info
+	$rowArray 				= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$DO_PIN					=Array1DGetValue($rowArray ,0);
+	$DO_Funtion				=Array1DGetValue($rowArray ,1);
+	$DO_SingalType			=Array1DGetValue($rowArray ,2);
+	$DO_Remark				=Array1DGetValue($rowArray ,3);
+      	$StartBit					=Array1DGetValue($rowArray ,5);
+	
+	$LoadBox_CMD			=Array1DGetValue($rowArray ,6);
+	$DMM_CH				=Array1DGetValue($rowArray ,7);
+	$DO_Off_LSL				=Array1DGetValue($rowArray ,8);
+	$DO_Off_USL			=Array1DGetValue($rowArray ,9);
+	$DO_On_LSL			=Array1DGetValue($rowArray ,10);
+	$DO_On_USL			=Array1DGetValue($rowArray ,11);  
+    	$DO_TestEnable			=Array1DGetValue($rowArray ,12);
+	$DO_ParallelTest			=Array1DGetValue($rowArray ,13);  
+      	// show row info
+	//检查当前步骤是否测试这个步骤
+	$DO_TestEnable = NumericComparison($DO_TestEnable,1, "==");
+	$Temp = "DO_PIN TestEnable="+$DO_TestEnable;
+	UpdateStatus($Temp);
+	if($DO_TestEnable== true)
+	{
+	  //~~~~~~~~~~~~~~~~~~DO On test~~~~~~~~~~~~~~~~~~~~~~
+	  //Set test Name
+	  $MeasName = $DO_PIN+"_SetDO-ON";
+	  // show TestName
+	  $TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
+	  UpdateStatus($TempMsg);
+	  //Check for parallel testing;
+
+	  }
+
+	  //~ // call DMM test Vol
+	  //input:
+	  SleepMilliseconds(100);
+	  $Channel = CopyVariable($DMM_CH);
+	  $Rang="100";
+	  $lowerLimit = CopyVariable($DO_Off_LSL);
+	  $upperLimit = CopyVariable($DO_Off_USL);
+	  //Output:
+	  $DMMRead_Vol=0;
+	  call Keysight6510_MeasureDCVoltage();
+	  //DO Test bebug 标志位
+	  if($g_DO_TestDebug==true)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $temp = $MeasName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
+	  }
+
+	  //check Test limit
+	  $measureName=$DO_PIN+"_Vol";
+	  
+	  $inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
+	  if($inLimits)
+	  {
+	    $DMMRead_Vol  = Abs($DMMRead_Vol);
+	  }
+	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_Off_LSL, $DO_Off_USL, true);
+	  //~ $TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	  //~ UpdateStatus($TempMsg);
+	  //~~~~~~~~~~~~~~~~~~DO Off test~~~~~~~~~~~~~~~~~~~~~~
+	  call DUT_ALL_DO_Off();     // 关闭产品DO输出
+	  call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+	  $TempMsg="~~~~~"+$measureName+" End Test"+"~~~~~\r\n";
+	  UpdateStatus($TempMsg);
+	  $rows_Loop=$rows_Loop+1;
+	}
+	
+  
+    UpdateStatus("~~~ DigitalOut_TEST END ~~~\r\n");
+    return;
+}
+
+
+
+function SUB_Get_DO_CMD()
+{
+  //~ //input
+      //~ $StartBit= 52;
+      //$CMD_Byte_Length=12;
+  //~ //output
+      //~ $CMD
+   $Mod_data = Mod($StartBit,8);  //取余数
+  //~ $Mod_data =$Mod_data+1;
+  $value = Divide($StartBit,8);
+  $Floor_data =  Floor($value);  //向下取整数  
+  
+  $Temp = "Mod_data="+$Mod_data;
+  UpdateStatus($Temp);
+  $Temp = "Floor_data="+$Floor_data;
+  UpdateStatus($Temp);
+  
+  //~~~~~~~Get Data
+  $CMD_DATE = BitWiseShift(1,$Mod_data,"<<");
+  UpdateStatus($CMD_DATE);
+  $length = StringLength($CMD_DATE);
+  if($length==1)
+  {
+    $CMD_DATE ="0"+$CMD_DATE;
+  }
+  $Temp = "CMD_DATE="+$CMD_DATE;
+  UpdateStatus($Temp);
+  
+   $Loop=0;
+  //~ $CMD_Byte_Length=12;
+  $SampleCMD="00";
+  $CMD="";
+  while($Loop<12)
+  {
+    $result = NumericComparison($Loop, $Floor_data, "==");
+    if($result)
+    {
+       $CMD=$CMD+" "+$CMD_DATE;
+    }
+     if(!$result)
+    {
+      $CMD=$CMD+" 00";
+    }   
+      $Loop=$Loop+1;
+  }
+  
+  $Temp = "CMD="+$CMD;
+  UpdateStatus( $Temp);
+  return;;
+}
+
+
+function Digital_OUT_FIX_RES_TEST()
+{
+   UpdateStatus("~~~ Digital_OUT_FIX_RES_TEST Start ~~~\r\n");
+    SetTestName("Digital-OUT");
+    // load config files
+    $worksheet = 6; //shell DO
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "O";
+    $endRow = 54;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    //~ OperatorPrompt("测试前关闭所有DO输出done", "OK");
+    call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+   // 开始循环测试
+  
+    $rows_Loop =0;
+    //~ OperatorPrompt("开始循环测试", "OK");
+    
+    while($rows_Loop < $rows_Length)
+  {
+	// Loading Config info
+	$rowArray 				= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$DO_PIN					=Array1DGetValue($rowArray ,0);
+	$DO_Funtion				=Array1DGetValue($rowArray ,1);
+	$DO_SingalType			=Array1DGetValue($rowArray ,2);
+	$DO_Remark				=Array1DGetValue($rowArray ,3);
+      	$StartBit					=Array1DGetValue($rowArray ,5);
+	
+	$LoadBox_CMD			=Array1DGetValue($rowArray ,6);
+	$DMM_CH				=Array1DGetValue($rowArray ,7);
+	$DO_Off_LSL				=Array1DGetValue($rowArray ,8);
+	$DO_Off_USL				=Array1DGetValue($rowArray ,9);
+	$DO_On_LSL				=Array1DGetValue($rowArray ,10);
+	$DO_On_USL				=Array1DGetValue($rowArray ,11);  
+    	$DO_TestEnable			=Array1DGetValue($rowArray ,12);
+	$DO_ParallelTest			=Array1DGetValue($rowArray ,13);  
+	$RES					=Array1DGetValue($rowArray ,14);  
+    
+    	    if($LoadBox_CMD !="N/A") // 如果是NA说明是直连负载不通过开关
+	    {
+	      $result = Serial_SendMilliseconds($g_LoadBox_Handle,$LoadBox_CMD,"OK",500);
+	      $result = StringTrim($result);
+	      $result="LoadBox Set DO "+$DO_PIN +"On CMD is "+$LoadBox_CMD+",Send Result is "+$result+"\r\n";
+	      UpdateStatus($result);
+	      SleepMilliseconds(5);
+	    }
+      	// show row info
+	    if($RES !=-1)
+	    {
+		call Fixtures_LoadBox_LoadOn();
+		//Keysight6510_MeasureResistance
+		SleepMilliseconds(100);
+		$RES = CastVariable("Float",$RES);
+		$Channel = CopyVariable($DMM_CH);
+		$Res_Range=10000;
+		$upperLimit = Multiply($RES,1.05);
+		$lowerLimit = Multiply($RES,0.95);
+		//Output:
+		$DMMRead_Res=0;
+		call Keysight6510_MeasureResistance();
+		//DO Test bebug 标志位
+
+		//check Test limit
+		$measureName=$DO_PIN+"_RES";
+
+		RecordMeasurementWithLimits($measureName,$DMMRead_Res , "Ohm", true, $lowerLimit, $upperLimit, true);
+	    }
+	  call LoadBoxResetSW(); 	//~ //测试前关闭所有Loadbox SW
+	  $rows_Loop=$rows_Loop+1;
+	}
+    return;
+  }
+
+
+
+
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PWM INPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+function PWM_IN_TEST_Duty75()
+{
+    SetTestName("PWM_IN_75%");
+    $worksheet 	= 5; //shell PWM_IN
+    $startcolumn 	= "A";
+    $startRow 		= 3;
+    $endColumn 	= "X";
+    $endRow 		= 19;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+    call LoadExcelConfigFile();
+     
+    call LoadBoxResetSW(); 					// PWM IN 负载板初始化
+    $Generate_Signal_Freq 	= 100;			//产生的信号频率，以Hz为单位
+    $Generate_Signal_Amp	=7;				//产生的信号赋值，以VPP为单位
+    $Generate_Signal_DCYCle	=25;			//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+   
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+	  call Load_PWMIN_TAB_STEP_DATA();
+	 $TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 25% ~~~~~~~\n";
+	 UpdateStatus($TempMsg);
+	 $TestEnable = NumericComparison($TestEnable, 1, "==");
+	call RIGOL_DG5072_Channel1_Output();		// call 产生PWM 信号
+	 if($TestEnable ==true)
+	 {
+	   //~~~~~~~~~~~~~Test Duty 25%~~~~~~~~~~~~
+	   // 设置loadbox 通道
+	  $result = Serial_SendMilliseconds($g_LoadBox_Handle,$PWMIN_LoadBoxCommand,"OK",500);
+	  $result="LoadBox Board set: "+$PWMIN_PIN+"PWM IN CH :"+$result+"\r\n";
+	  UpdateStatus($result);  
+	   
+	   $ParallelTest = NumericComparison($ParallelTest, 1, "==");
+	   if($ParallelTest == false)
+	   {	   
+	      // Call get DUT PWM Data
+	      SleepMilliseconds(500);
+	      call SUB_Read_DUT_PWM_INPUT();  
+	   }
+	   
+	  UpdateStatus("\n\t~~~~~~~~~Get Freq Data~~~~~~~~~");
+	  
+	  //开始bit 除以8 得到开始的byte，开始byte +1 得到结束byte
+	  $PWM_Freq_Start_Byte= Divide($Freq_Start_bit,8);
+	  $TempMag= "PWM_Freq_Start_Byte="+$PWM_Freq_Start_Byte;
+	  UpdateStatus($TempMag);
+	   //通过开始和结束byte得到frequency
+	  $Freq_Str_StartingPosition = $PWM_Freq_Start_Byte*3;
+	  $PWM_Freq = StringSub($PWM_IN_DATA,$Freq_Str_StartingPosition,6); // 
+	  $PWM_Freq = StringReplace($PWM_Freq," ","");
+	  $TempMag="PWM_Freq_HEX="+$PWM_Freq ;
+	  UpdateStatus($TempMag);
+	  $PWM_Freq = HexStringToInteger($PWM_Freq);
+	  $MeasuName =$PWMIN_PIN+"_Freq_75%";
+	  //check Result for Freq
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "Hz", true, $State2_Freq_LSL, $State2_Freq_USL, true);
+	  
+	  UpdateStatus("\n\t~~~~~~~~~Get duty date~~~~~~~~~");
+	  $PWM_Duty_Start_Byte =  Divide($Duty_Start_bit,8);
+	  $TempMag= "PWM_Duty_Start_Byte="+$PWM_Duty_Start_Byte;
+	  UpdateStatus($TempMag);
+	  $Duty_Str_StartingPosition = $PWM_Duty_Start_Byte*3;
+	  $PWM_Duty = StringSub($PWM_IN_DATA,$Duty_Str_StartingPosition,6); // 
+	  $PWM_Duty = StringReplace($PWM_Duty," ","");
+	  $TempMag="PWM_Duty_HEX="+$PWM_Duty ;
+	  UpdateStatus($TempMag);
+	  $PWM_Duty = HexStringToInteger($PWM_Duty);
+	  $PWM_Duty = $PWM_Duty*0.1; //乘以转换比率
+	  $MeasuName =$PWMIN_PIN+"_Duty_75%";
+	  //Check Result for Duty
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Duty, "%", true, $State2_Duty_LSL, $State2_Duty_USL, true);
+	   if($g_PWMIN_TestDebug==true)
+	   {
+	      $Debug_info=$PWMIN_PIN+" "+$State2_duty+"%"+"\r\nContinue debugging PWM_IN?";
+	      $result=OperatorPrompt($Debug_info, "OKCancel");
+	      $StopTest = StringComparison($result,"Cancel","==");
+	     if($StopTest==true)
+	     {
+	       Abort("On PWM_IN DEBUG Test User Abort!");
+	      }
+	    }
+	  call RIGOL_DG5072_Channel1_OutOff();	// call 产生PWM 信号Off
+	  call LoadBoxResetSW(); // 负载板所有继电器关闭
+      }
+	$rows_Loop=$rows_Loop+1;
+    }
+    return;
+}
+
+
+function PWM_IN_TEST_Duty25()
+{
+    SetTestName("PWM_IN_25%");
+    $worksheet 	= 5; //shell PWM_IN
+    $startcolumn 	= "A";
+    $startRow 		= 3;
+    $endColumn 	= "X";
+    $endRow 		= 19;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+    call LoadExcelConfigFile();
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+	call Load_PWMIN_TAB_STEP_DATA();
+	call LoadBoxResetSW(); 					// PWM IN 负载板初始化
+	$Generate_Signal_Freq 		= 100;			//产生的信号频率，以Hz为单位
+	$Generate_Signal_Amp		=5;				//产生的信号赋值，以VPP为单位
+	$Generate_Signal_DCYCle	=75;			//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80
+	//Show Pin info
+	 $TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 25% ~~~~~~~\n";
+	 UpdateStatus($TempMsg);
+	 $TestEnable = NumericComparison($TestEnable, 1, "==");
+	call RIGOL_DG5072_Channel1_Output();		// call 产生PWM 信号
+	 if($TestEnable ==true)
+	 {
+	   //~~~~~~~~~~~~~Test Duty 25%~~~~~~~~~~~~
+	   // 设置loadbox 通道
+	  ($returned, $found)  = Serial_SendMillisecondsBool($g_LoadBox_Handle,$PWMIN_LoadBoxCommand,"OK",500);
+	  $returned="LoadBox Board set: "+$PWMIN_PIN+"PWM IN CH :"+$result+"\r\n";
+	   if(!$found)
+	   {
+	     $returned= $returned+" FAILED";
+	     Abort($returned);
+	    }
+	  UpdateStatus($returned);
+	   // 信号 通道
+	  ($returned, $found) = Serial_SendMillisecondsBool($g_LoadBox_Handle,$SingleCH,"OK",500);
+	  $returned="LoadBox Board set SingleCH: "+$PWMIN_PIN+"PWM IN SingleCH CH :"+$result+"\r\n";
+	  if(!$found)
+	   {
+	      $returned= $returned+" FAILED";
+	     Abort($returned);
+	    }
+	  UpdateStatus($returned);
+	   
+	   $ParallelTest = NumericComparison($ParallelTest, 1, "==");
+	   if($ParallelTest == false)
+	   {	   
+	      // Call get DUT PWM Data
+	      SleepMilliseconds(1500);
+	      call SUB_Read_DUT_PWM_INPUT();  
+	   }
+	   
+
+	  UpdateStatus("\n\t~~~~~~~~~Get Freq Data~~~~~~~~~");
+	  
+	  //开始bit 除以8 得到开始的byte，开始byte +1 得到结束byte
+	  $PWM_Freq_Start_Byte= Divide($Freq_Start_bit,8);
+	  $TempMag= "PWM_Freq_Start_Byte="+$PWM_Freq_Start_Byte;
+	  UpdateStatus($TempMag);
+	   //通过开始和结束byte得到frequency
+	  $Freq_Str_StartingPosition = $PWM_Freq_Start_Byte*3;
+	  $PWM_Freq = StringSub($PWM_IN_DATA,$Freq_Str_StartingPosition,6); // 
+	  $PWM_Freq = StringReplace($PWM_Freq," ","");
+	  $TempMag="PWM_Freq_HEX="+$PWM_Freq ;
+	  UpdateStatus($TempMag);
+	  $PWM_Freq = HexStringToInteger($PWM_Freq);
+	  $MeasuName =$PWMIN_PIN+"_Freq_25%";
+	  //check Result for Freq
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Freq, "Hz", true, $State1_Freq_LSL, $State1_Freq_USL, true);
+	  
+	  UpdateStatus("\n\t~~~~~~~~~Get duty date~~~~~~~~~");
+	  $PWM_Duty_Start_Byte =  Divide($Duty_Start_bit,8);
+	  $TempMag= "PWM_Duty_Start_Byte="+$PWM_Duty_Start_Byte;
+	  UpdateStatus($TempMag);
+	  $Duty_Str_StartingPosition = $PWM_Duty_Start_Byte*3;
+	  $PWM_Duty = StringSub($PWM_IN_DATA,$Duty_Str_StartingPosition,6); // 
+	  $PWM_Duty = StringReplace($PWM_Duty," ","");
+	  $TempMag="PWM_Duty_HEX="+$PWM_Duty ;
+	  UpdateStatus($TempMag);
+	  $PWM_Duty = HexStringToInteger($PWM_Duty);
+	  $PWM_Duty = $PWM_Duty*0.1; //乘以转换比率
+	  $MeasuName =$PWMIN_PIN+"_Duty_25%";
+	  //Check Result for Duty
+	  RecordMeasurementWithLimits($MeasuName, $PWM_Duty, "%", true, $State1_Duty_LSL, $State1_Duty_USL, true);
+	  if($g_PWMIN_TestDebug==true)
+	  {
+	      $Debug_info=$PWMIN_PIN+" "+$State1_duty+"%"+"\r\nContinue debugging PWM_IN?";
+	      $result=OperatorPrompt($Debug_info, "OKCancel");
+	      $StopTest = StringComparison($result,"Cancel","==");
+	     if($StopTest==true)
+	     {
+	       Abort("On PWM_IN DEBUG Test User Abort!");
+	      }
+	  }
+	  call RIGOL_DG5072_Channel1_OutOff();	// call 产生PWM 信号Off
+	  call LoadBoxResetSW(); // 负载板所有继电器关闭
+      }
+	$rows_Loop=$rows_Loop+1;
+    }
+    return;
+}
+
+
+function PWM_IN_TEST()
+{
+    SetTestName("PWM_IN");
+    $worksheet 		= 5; //shell PWM_IN
+    $startcolumn 		= "A";
+    $startRow 		= 2;
+    $endColumn 		= "X";
+    $endRow 		= 18;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+    call LoadExcelConfigFile();
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+      call Load_PWMIN_TAB_STEP_DATA();
+      //Show Pin info
+       $TestEnable = NumericComparison($TestEnable, 1, "==");
+      if($TestEnable ==true)
+      {
+	//Test 25%
+	$TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 25% ~~~~~~~\n";
+       UpdateStatus($TempMsg);
+	$Generate_Signal_Freq 	=CastVariable("Float",$SetFreq);		//产生的信号频率，以Hz为单位
+	
+	//产生的方波占空比，在10Mhz以下波形，占空比设置范围为20~80 //高驱模式需要反向
+	$Generate_Signal_DCYCle	=CastVariable("Float",$State1_duty);
+	$Generate_Signal_Freq=100;		//设置频率，以HZ为单位
+	$Generate_Signal_Amp=10;		//设置幅值，以Vpp为单位
+	$Generate_Signal_DCYCle=25;		//设置占空比，10Mhz下占空比范围20~80
+	call RIGOL_DG5072_Channel1_Output();		// call 产生PWM 信号
+	$Set_Type_Name	="25%";
+	$State_Freq_LSL =CastVariable("Float",$State1_Freq_LSL);
+	$State_Freq_USL =CastVariable("Float",$State1_Freq_USL); 
+	$State_Duty_LSL=CastVariable("Float",$State1_Duty_LSL);
+	$State_Duty_USL=CastVariable("Float",$State1_Duty_USL);
+	$Temp=  "DUTY="+$Generate_Signal_DCYCle;
+	UpdateStatus($Temp);
+	call SUB_PWMIN_TEST();
+
+	//Test 75%
+	$TempMsg="~~~~~"+$PWMIN_PIN+$PWMIN_Funtion+" PWM IN 75% ~~~~~~~\n";
+       UpdateStatus($TempMsg);
+	$Generate_Signal_DCYCle	=CastVariable("Float",$State2_duty);	 //高驱模式需要反向
+	$Generate_Signal_Freq=100;		//设置频率，以HZ为单位
+	$Generate_Signal_Amp=10;		//设置幅值，以Vpp为单位
+	$Generate_Signal_DCYCle=75;		//设置占空比，10Mhz下占空比范围20~80
+	call RIGOL_DG5072_Channel1_Output();		// call 产生PWM 信号
+	$State_Freq_LSL =CastVariable("Float",$State2_Freq_LSL);
+	$State_Freq_USL =CastVariable("Float",$State2_Freq_USL);
+	$State_Duty_LSL=CastVariable("Float",$State2_Duty_LSL);
+	$State_Duty_USL=CastVariable("Float",$State2_Duty_USL);
+	$Set_Type_Name	="75%";
+	$Temp=  "DUTY="+$Generate_Signal_DCYCle;
+	UpdateStatus($Temp);
+	call SUB_PWMIN_TEST();
+	  
+      }
+      $rows_Loop=$rows_Loop+1;
+    }
+    return;
+}
+
+ function SUB_PWMIN_TEST()
+ {
+ // INPUT 
+ //~ $State_Freq_LSL
+ //~ $State_Freq_USL
+ //~ $State_Duty_LSL
+ //~ $State_Duty_USL
+  // $Set_Type_Name
+   call LoadBoxResetSW(); 					// PWM IN 负载板初始化
+  
+   // 设置loadbox 通道
+  ($returned, $found)  = Serial_SendMillisecondsBool($g_LoadBox_Handle,$PWMIN_LoadBoxCommand,"OK",500);
+  $returned="LoadBox Board set: "+$PWMIN_PIN+"PWM IN CH :"+$result+"\r\n";
+     UpdateStatus($PWMIN_LoadBoxCommand);
+  UpdateStatus($returned);
+   if(!$found)
+   {
+     $returned= $returned+" FAILED";
+     Abort($returned);
+    }
+
+   // 信号 通道
+  ($returned, $found) = Serial_SendMillisecondsBool($g_LoadBox_Handle,$SingleCH,"OK",500);
+  $returned="LoadBox Board set SingleCH: "+$PWMIN_PIN+"PWM IN SingleCH CH :"+$result+"\r\n";
+      UpdateStatus($PWMIN_LoadBoxCommand);
+  UpdateStatus($returned);
+  if(!$found)
+   {
+      $returned= $returned+" FAILED";
+     Abort($returned);
+    }
+   
+    SleepMilliseconds(2000);
+    call SUB_Read_DUT_PWM_INPUT();  
+   
+   
+  UpdateStatus("\n\t~~~~~~~~~Get Freq Data~~~~~~~~~");
+  //开始bit 除以8 得到开始的byte，开始byte +1 得到结束byte
+  $PWM_Freq_Start_Byte= Divide($Freq_Start_bit,8);
+  $TempMag= "PWM_Freq_Start_Byte="+$PWM_Freq_Start_Byte;
+  UpdateStatus($TempMag);
+   //通过开始和结束byte得到frequency
+  $Freq_Str_StartingPosition = $PWM_Freq_Start_Byte*3;
+  $PWM_Freq = StringSub($PWM_IN_DATA,$Freq_Str_StartingPosition,6); // 
+  $PWM_Freq = StringReplace($PWM_Freq," ","");
+  $TempMag="PWM_Freq_HEX="+$PWM_Freq ;
+  UpdateStatus($TempMag);
+  $PWM_Freq = HexStringToInteger($PWM_Freq);
+  $MeasuName_ =$PWMIN_PIN+"_Freq_"+$Set_Type_Name;
+  //check Result for Freq
+  RecordMeasurementWithLimits($MeasuName_, $PWM_Freq, "Hz", true, $State_Freq_LSL, $State_Freq_USL, true);
+  $PWM_Freq_inLimits = NumericLimitTestBool($PWM_Freq, $State_Freq_LSL, $State_Freq_USL);
+
+
+  UpdateStatus("\n\t~~~~~~~~~Get duty date~~~~~~~~~");
+  $PWM_Duty_Start_Byte =  Divide($Duty_Start_bit,8);
+  $TempMag= "PWM_Duty_Start_Byte="+$PWM_Duty_Start_Byte;
+  UpdateStatus($TempMag);
+  $Duty_Str_StartingPosition = $PWM_Duty_Start_Byte*3;
+  $PWM_Duty = StringSub($PWM_IN_DATA,$Duty_Str_StartingPosition,6); // 
+  $PWM_Duty = StringReplace($PWM_Duty," ","");
+  $TempMag="PWM_Duty_HEX="+$PWM_Duty ;
+  UpdateStatus($TempMag);
+  $PWM_Duty = HexStringToInteger($PWM_Duty);
+  $PWM_Duty = $PWM_Duty*0.1; //乘以转换比率
+  $MeasuName_ =$PWMIN_PIN+"_Duty_"+$Set_Type_Name;
+  //Check Result for Duty
+  RecordMeasurementWithLimits($MeasuName_, $PWM_Duty, "%", true, $State_Duty_LSL, $State_Duty_USL, true);
+  $PWM_Duty_inLimits = NumericLimitTestBool($PWM_Duty, $State_Duty_LSL, $State_Duty_USL);
+  if($g_PWMIN_TestDebug==true)
+  {
+    $PWM_IN_PASS= $PWM_Duty_inLimits && $PWM_Freq_inLimits;
+    if(!$PWM_IN_PASS)
+    {   
+      $Debug_info=$PWMIN_PIN+" PWM IN FAILED!! "+"\r\nContinue debugging PWM_IN?";
+      $result=OperatorPrompt($Debug_info, "OKCancel");
+      $StopTest = StringComparison($result,"Cancel","==");
+      if($StopTest==true)
+       {
+	 Abort("On PWM_IN DEBUG Test User Abort!");
+	}
+    }
+  }
+  return;
+}
+	 
+
+function SUB_Read_DUT_PWM_INPUT()  //SUN_PWMIN_TEST 调用这个函数
+{
+    UpdateStatus("\r\n~~~~~~~~~~ Read_PWM_INPUT_start~~~~~~~~~~\r\n");
+    //~ 公共函数，获取所有PWM的Data 以下为Demo Data
+    //~ ID:07E8,data:10 54 71 03 C0 82 00 64 01 F7 00 64 00 00 00 64 00 00 00 00 03 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 ;I
+    //~D:07E8,data:21 01 F4 00 00 00 00 00 00 00 00 00 64 00 00 00 00 00 00 00 00 00 00 AA ;
+    $CAN_Rev_Msg_21_frame="";
+    $CAN_Rev_Msg_First_fra me="";
+    $Data_Byte_length	= 80;
+    $PWM_INPUT_Data_array="";
+    $CAN_Send_Msg = "04 31 03 C0 82 CC CC CC";
+    $CAN_Rev_ExpMsg = "ID:07E8,data:10 54 71 03 C0 82";	
+    $MeasurementName = "Read_PWM_INPUT(First_frame)";
+    $Loop=0;
+    $Result=false;
+    while($Result==false && $Loop<3)
+    {
+        call ZLG_CANFD_Send();//send can msg
+	SleepMilliseconds(30);
+	call ZLG_CANFD_Rev();
+	$CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
+	//~ UpdateStatus($CAN_Rev_Msg);
+	$show_CAN_Rev_Msg="CAN_Rev_Msg_First_frame="+$CAN_Rev_Msg;
+	UpdateStatus($show_CAN_Rev_Msg);
+	$Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+
+	$Loop=$Loop+1;
+     }
+    // ~~~~~~~~~获取第一帧~~~~~~~
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    $CAN_Rev_Msg_First_frame=$CAN_Rev_Msg ;
+    $CAN_Rev_Msg_First_frame = StringParse($CAN_Rev_Msg_First_frame, $CAN_Rev_ExpMsg, ";"); 
+    // ~~~~~~~~~获取第二帧~~~~~~~
+    $CAN_Send_Msg = "30 00 00 CC CC CC CC CC";
+    $CAN_Rev_ExpMsg = "ID:07E8,data:21";	
+    $MeasurementName = "Read_PWM_INPUT(21_frame)";
+    call ZLG_CANFD_Send();//send can msg
+    SleepMilliseconds(20);
+    call ZLG_CANFD_Rev();
+    $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
+
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    $CAN_Rev_Msg_21_frame=$CAN_Rev_Msg;
+    UpdateStatus($CAN_Rev_Msg_21_frame);
+    $CAN_Rev_Msg_21_frame = StringParse($CAN_Rev_Msg_21_frame, $CAN_Rev_ExpMsg, "AA"); 
+    $CAN_Rev_Msg_21_frame = StringTrim($CAN_Rev_Msg_21_frame); //删除前后空白
+    $CAN_Rev_Msg=$CAN_Rev_Msg_First_frame+$CAN_Rev_Msg_21_frame; //拼接两帧数据 高位在前
+    $CAN_Rev_Msg=StringReplace($CAN_Rev_Msg,"ID:07E8,data:",""); //删除"ID ID:07E8,data"
+    $CAN_Rev_Msg=StringReplace($CAN_Rev_Msg,";",""); //删除 ";"
+    $CAN_Rev_Msg=StringReplace($CAN_Rev_Msg,$CAN_Rev_ExpMsg,""); //删除 "10 54 71 03 C0 82"
+    $PWM_IN_DATA = StringTrim($CAN_Rev_Msg); //删除前后空白
+    
+    $temp="ALL_PWM_Data="+$PWM_IN_DATA+"\r\n"; //打印拼接后的数据
+    UpdateStatus($temp);
+    
+    $PWM_INPUT_Data_array = StringSplitToArray($PWM_IN_DATA," ",$Data_Byte_length);
+    $Rev_Msg_array_Len=ArrayGetLength($PWM_INPUT_Data_array);
+    UpdateStatus($Rev_Msg_array_Len);// MCU 返回的数据 80 个 字节    
+    $Result = NumericComparison($Rev_Msg_array_Len,$Data_Byte_length,"==");
+    //判断数据长度
+    //~ $measName="PWM_INPUT_Data_Length";
+    //~ RecordMeasurementPassFail($measName, $Rev_Msg_array_Len, "Bool", true,$Result );
+    $measName="PWM_INPUT_Data";
+    RecordMeasurement($measName, $PWM_IN_DATA, "NA", true); 
+    
+    UpdateStatus("\r\n~~~~~~~~~~ Read_PWM_INPUT_END~~~~~~~~~~\r\n");
+    return;
+ }
+
+ 
+ function Load_PWMIN_TAB_STEP_DATA()
+ {
+   	// Loading Config info
+	$rowArray 					= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+	$PWMIN_PIN					=Array1DGetValue($rowArray ,0);
+	$PWMIN_Funtion				=Array1DGetValue($rowArray ,1);
+	$PWMIN_SingalType			=Array1DGetValue($rowArray ,2);
+	$PWMIN_Remark				=Array1DGetValue($rowArray ,3);
+	$SetFreq						=Array1DGetValue($rowArray ,5)
+	$PWMIN_DUT_Command			=Array1DGetValue($rowArray ,6);
+	$PWMIN_LoadBoxReset			=Array1DGetValue($rowArray ,7);
+	$PWMIN_LoadBoxCommand		=Array1DGetValue($rowArray ,8);
+	$SingleCH					=Array1DGetValue($rowArray ,9); //切换直连低驱，还是通过MOS FET放大高驱
+	$Freq_Start_bit				=Array1DGetValue($rowArray ,10);
+	$Duty_Start_bit				=Array1DGetValue($rowArray ,11);
+	// LOAD LIMIT Start1(75%)
+	$State1_duty					=Array1DGetValue($rowArray ,12);
+	$State1_Freq_LSL				=Array1DGetValue($rowArray ,13);
+	$State1_Freq_USL				=Array1DGetValue($rowArray ,14);
+	$State1_Duty_LSL				=Array1DGetValue($rowArray ,15);
+	$State1_Duty_USL				=Array1DGetValue($rowArray ,16);
+       // LOAD LIMIT Start2 (75%)
+	$State2_duty					=Array1DGetValue($rowArray ,17);
+	$State2_Freq_LSL				=Array1DGetValue($rowArray ,18);
+	$State2_Freq_USL				=Array1DGetValue($rowArray ,19);
+	$State2_Duty_LSL				=Array1DGetValue($rowArray ,20);
+	$State2_Duty_USL				=Array1DGetValue($rowArray ,21);
+ 	$TestEnable					=Array1DGetValue($rowArray ,22);
+	$ParallelTest					=Array1DGetValue($rowArray ,23);      
+	//Show Pin info
+   
+	return;
+  }
+ //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PWM OUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+function PWM_OUT_TEST()  // TOP function 
+{
+  UpdateStatus("=>>>>>>>>>>>>>>>>>> PWM_OUT>>>>>>>>>>>>>>>>>>\r\n");
+  SetTestName("PWM_OUT");
+  $AFTER_SET_PWMOUT =500;
+  // load config files
+  $worksheet = 7; //PWM OUT
+  $startcolumn = "A";
+  $startRow = 2;
+  $endColumn = "T";
+  $endRow = 12;
+  //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+  call LoadExcelConfigFile(); //return array ()
+  $rows_Loop =0;
+  while($rows_Length>$rows_Loop )
+  {
+    // Loading Config info
+    call Load_PWM_OUT_STEP_DATA(); // 加载EXcel 一行
+    $StepEnable = NumericComparison($StepEnable, 1, "==");
+    if($StepEnable)  //检查是否使能测试
+    {
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~State2 PWM_75 Test//~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //Set test Name 
+      $STATE_NAME = "PWM_75%";
+      // show row info
+      $TempMsg="~~~~~"+$PIN+" Start Test"+"~~~~~";
+      UpdateStatus($TempMsg);
+      //get CMD
+      $StartBit=StringTrim($StartBit);
+      $SendCMD = StringTrim($DUT_CMD_STATE2); 
+      call GET_PWMOUT_CMD();  //生成最终命令
+       //~ OperatorPrompt("GET_PWMOUT_CMD", "OK");
+      call SET_PWM_OUT_ON();  //发送命令请求PWM PIN 输出
+      
+      //~ OperatorPrompt("SET_PWM_OUT_ON", "OK");
+      SleepMilliseconds($AFTER_SET_PWMOUT); //等待输出稳定
+      
+      $Channel 		= CopyVariable($DMM_CH);
+      $Freq_Test_Disabled = StringContains("NA",$Feq_LSL_STATE2);
+      $duty_Test_Disabled = StringContains("NA",$duty_LSL_STATE2);
+      $PWM_LOOP=0;
+      $PWM_TEST_PASS=false;
+      while($PWM_TEST_PASS == false && $PWM_LOOP<5)
+      {
+
+	  $Channel 		= CopyVariable($DMM_CH);
+	  $Feq_LSL 		= CopyVariable($Feq_LSL_STATE2);
+	  $Feq_USL 		= CopyVariable($Feq_USL_STATE2);
+	  $DMMRead_FREQ=0;
+	  call Keysight6510_MeasureFreq(); // call test FREQ
+	  //add end test msg
+	  UpdateStatus($DMMRead_FREQ);
+	
+	  $FREQ_inLimits = NumericLimitTestBool($DMMRead_FREQ, $Feq_LSL, $Feq_USL);	
+	  $duty_LSL 		= CopyVariable($duty_LSL_STATE2);
+	  $duty_USL 		= CopyVariable($duty_USL_STATE2);
+	  $Rang =100;
+	  $DMMRead_Vol=0;
+	  call Keysight6510_MeasureDCVoltage(); // call test vol
+	  UpdateStatus($DMMRead_Vol);
+	  $duty = Divide($DMMRead_Vol,13.5);
+	  $duty =Multiply($duty,100);
+	  $duty_inLimits = NumericLimitTestBool($duty, $duty_LSL, $duty_USL);
+	  $PWM_TEST_PASS= $duty_inLimits &&  $FREQ_inLimits;
+	  $PWM_LOOP=$PWM_LOOP+1;
+      }
+    
+      $measureName= $PIN+"_FREQ_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $DMMRead_FREQ, "Hz", true, $Feq_LSL, $Feq_USL, true);
+      $measureName= $PIN+"_VOL_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "Hz", true, 8, 12, true);
+      $measureName= $PIN+"_DUTY_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $duty, "%", true, $duty_LSL, $duty_USL, true);
+      call CHECK_PWMOUT_DEBUG();
+      
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~State1 PWM_72 Test//~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //Set test Name 
+      $STATE_NAME = "PWM_25%";
+      // show row info
+      $TempMsg="~~~~~"+$PIN+" Start Test"+"~~~~~";
+      UpdateStatus($TempMsg);
+      //get CMD
+      $StartBit=StringTrim($StartBit);
+      $SendCMD = StringTrim($DUT_CMD_STATE1); 
+      call GET_PWMOUT_CMD();  				//生成最终命令
+      call SET_PWM_OUT_ON();  //发送命令请求PWM PIN 输出
+      SleepMilliseconds($AFTER_SET_PWMOUT); //等待输出稳定
+      $PWM_LOOP=0;
+      $PWM_TEST_PASS=false;
+      while($PWM_TEST_PASS == false && $PWM_LOOP<5)
+      {
+	$Feq_LSL 		= CopyVariable($Feq_LSL_STATE1);
+	$Feq_USL 		= CopyVariable($Feq_USL_STATE1);
+	$DMMRead_FREQ=0;
+	call Keysight6510_MeasureFreq(); // call test FREQ
+	//add end test msg
+	UpdateStatus($DMMRead_FREQ);
+	$FREQ_inLimits = NumericLimitTestBool($DMMRead_FREQ, $Feq_LSL, $Feq_USL);
+      
+	$duty_LSL 		= CopyVariable($duty_LSL_STATE1);
+	$duty_USL 		= CopyVariable($duty_USL_STATE1);
+	$Rang =100;
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage(); // call test vol
+	UpdateStatus($DMMRead_Vol);
+	$duty = Divide($DMMRead_Vol,13.5);
+	$duty =Multiply($duty,100);
+      $PWM_TEST_PASS= $duty_inLimits &&  $FREQ_inLimits;
+      $PWM_LOOP=$PWM_LOOP+1;
+      }
+      
+     
+	$measureName= $PIN+"_FREQ_"+$STATE_NAME;
+	RecordMeasurementWithLimits($measureName, $DMMRead_FREQ, "Hz", true, $Feq_LSL, $Feq_USL, true);
+	$measureName= $PIN+"_VOL_"+$STATE_NAME;
+	RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, 2.3, 4.5, true);
+	$measureName= $PIN+"_DUTY_"+$STATE_NAME;
+	RecordMeasurementWithLimits($measureName, $duty, "%", true, $duty_LSL, $duty_USL, true);
+	$PWM_TEST_PASS= $duty_inLimits &&  $FREQ_inLimits;
+      }
+      call CHECK_PWMOUT_DEBUG();
+      $rows_Loop=$rows_Loop+1;
+  }
+   
+    return;
+}
+function GET_PWMOUT_CMD()  // 获取设置pwm 输出的CMD
+{
+  // INOUT:
+	//$StartBit		=216;
+	//$SendCMD		="11 22 33";
+  //OUTPUT:
+	//$First_frame_CMD
+	//$Second_frame_CMD
+  
+    $StartByte	=Divide($StartBit,8); //start bit 转换位start byte
+    $Temp ="StartByte="+$StartByte;
+    UpdateStatus($Temp);
+
+    //定义默认的CMD ，70位byte 的不含帧头和帧尾
+    $SampleCMD ="00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00";
+    $SampleCMDArray = StringSplitToArray($SampleCMD," ",70);
+    $SampleCMDArrayLength = ArrayGetLength($SampleCMDArray); // Sample CMD to Array
+
+    $SendCMDArray	=StringSplitToArray($SendCMD," ",3); // Sample CMD to Array
+    //将Sample CDM 替换成实际CDM
+    $Loop=0;
+    while($Loop<3)
+    {
+      $CMD_Value = Array1DGetValue($SendCMDArray,$Loop);
+      $SetByte= Add($StartByte,$Loop)
+      Array1DSetValue($SampleCMDArray, $SetByte,$CMD_Value );     
+      $Loop=$Loop+1;
+    }
+
+    // 将CMD Array 转换成 CDM String
+    $Loop=0;
+    $SendCMD ="";
+    while($Loop<$SampleCMDArrayLength)
+    {
+      $CMD_Str = Array1DGetValue($SampleCMDArray,$Loop);
+      $SendCMD=$SendCMD+$CMD_Str+" ";
+      $Loop=$Loop+1;
+    }
+    $SendCMD= StringTrim($SendCMD);
+    $Temp= "SendCMD= "+$SendCMD;
+    UpdateStatus($Temp);
+    $length = StringLength($SendCMD);
+    $Temp = "CMD_LENGTH="+$length;
+    UpdateStatus($Temp);
+    $result = NumericComparison($length, 209, "==");
+    if(!$result)
+    {
+      Fail("PWM OUT CMD length is Error!" );
+    }
+
+    //获取第一帧数据
+    $First_frame_CMD = StringSub($SendCMD,0,174); // 获取前面58个字节
+    $First_frame_CMD = "10 4A 31 01 C0 83 "+$First_frame_CMD;//添加帧头帧尾
+    $First_frame_CMD= StringTrim($First_frame_CMD);
+    $Temp= "First_frame_CMD= "+$First_frame_CMD;
+    UpdateStatus($Temp);
+    //获取第二帧数据
+    $Second_frame_CMD = StringSub($SendCMD,174,210); // 获取前面12个字节
+    $Second_frame_CMD= StringTrim($Second_frame_CMD);
+    $Second_frame_CMD  ="21 "+$Second_frame_CMD+" CC CC CC";  //添加帧头帧尾
+    $Temp= "Second_frame_CMD= "+$Second_frame_CMD;
+    UpdateStatus($Temp);
+    return;
+}
+
+
+function ALL_PWM_OUT_OFF()  // 设置所有的PWM 输出关闭，
+{
+      ///这个函数通常在开始测试前调用，用于减少电流负载，因为部分PWM可能无法关闭
+      $MeasName="PWM_OUT_OFF";
+      $First_frame_CMD ="10 4A 31 01 C0 83 00 00 00 00 00 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00";
+      $Second_frame_CMD="21 00 00 00 00 00 00 00 00 00 00 00 00 CC CC CC";
+      //~~~Send First_frame_CMD~~~~~
+      $CAN_Send_Msg = StringTrim($First_frame_CMD);
+      $CAN_Rev_ExpMsg = "30 00 14 AA AA AA AA AA";
+      //~ $TempMsg = "CMD First_frame_CMD ="+$CAN_Send_Msg+"\n";
+      //~ UpdateStatus($TempMsg);
+      
+      call ZLG_CANFD_Send();//send can msg
+      UpdateStatus($CAN_Send_Msg);
+      SleepMilliseconds(50);
+      call ZLG_CANFD_Rev();
+      UpdateStatus($CAN_Rev_Msg);
+      $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+      //~~~Send Second_frame_CMD~~~~~
+      if(!$Result)
+      {
+	Fail("PWM SEND First_frame_CMD FAILED");
+      }
+      $CAN_Send_Msg = StringTrim($Second_frame_CMD);
+      $CAN_Rev_ExpMsg = "04 71 01 C0 83";
+      //~ $TempMsg = "CMD Second_frame_CMD="+$CAN_Send_Msg+"\n";
+      //~ UpdateStatus($TempMsg);
+      
+      call ZLG_CANFD_Send();//send can msg
+      UpdateStatus($CAN_Send_Msg);
+      SleepMilliseconds(50);
+      call ZLG_CANFD_Rev();
+      UpdateStatus($CAN_Rev_Msg);
+      $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+      $MeasName_=$MeasName+"_Req";
+      RecordMeasurementPassFail($MeasName_, $CAN_Rev_Msg, "Bool", true, $Result);
+      return;
+}
+
+function Load_PWM_OUT_STEP_DATA()  // 获取Sequence 的一行
+{
+    // Loading Config info
+    $rowArray 			= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+
+    $PIN				=Array1DGetValue($rowArray ,0);
+    $Function			=Array1DGetValue($rowArray ,1);
+    $singal_type			=Array1DGetValue($rowArray ,2);
+    $StartBit			=Array1DGetValue($rowArray ,6);
+    $DUT_CMD_STATE1		=Array1DGetValue($rowArray ,9); //25%
+    $DUT_CMD_STATE2		=Array1DGetValue($rowArray ,14); //75%
+    $DMM_CH			=Array1DGetValue($rowArray ,7);
+    $DMM-Slot-PIN		=Array1DGetValue($rowArray ,8);
+    $Feq_LSL_STATE1		=Array1DGetValue($rowArray ,10);
+    $Feq_USL_STATE1		=Array1DGetValue($rowArray ,11);
+    $duty_LSL_STATE1		=Array1DGetValue($rowArray ,12);	
+    $duty_USL_STATE1		=Array1DGetValue($rowArray ,13);
+
+    $Feq_LSL_STATE2		=Array1DGetValue($rowArray ,15);
+    $Feq_USL_STATE2		=Array1DGetValue($rowArray ,16);	
+    $duty_LSL_STATE2		=Array1DGetValue($rowArray ,17);	
+    $duty_USL_STATE2		=Array1DGetValue($rowArray ,18);
+
+    $StepEnable			=Array1DGetValue($rowArray ,19);
+
+    return;
+}
+
+
+function SET_PWM_OUT_ON()   // 设置一个PWM 输出打开
+{
+  $_Loop_=0;
+  $PWM_OUT_CMD=false;
+  while($PWM_OUT_CMD==false && $_Loop_<3)
+  {
+    $First_frame_RECE="";
+    $Second_frame_RECE="";
+    $CANFD_SEND_LOOP=1;
+    $Rev_Delay=50;
+    $CAN_Send_Msg = StringTrim($First_frame_CMD);
+    $CAN_Rev_ExpMsg ="30 00 14 AA AA AA AA AA";  //第一帧返回预期
+    call CANFD_SendMillisecondsMultiWait();
+    $Send_First_frame_CMD_PASS = CastVariable("Bool",$Result); 
+    $First_frame_RECE = CastVariable("String",$CAN_Rev_Msg); 
+    UpdateStatus($First_frame_RECE);
+    UpdateStatus($Send_First_frame_CMD_PASS);
+    //~ OperatorPrompt("First_frame_CMD Start", "OK");
+    
+    //~ //-~~Send Second_frame_CMD~~~~~
+    $CANFD_SEND_LOOP=1;
+    $Rev_Delay=200;
+    $CAN_Send_Msg = StringTrim($Second_frame_CMD);
+    $CAN_Rev_ExpMsg =  "04 71 01 C0 83";  //最终帧返回预期
+    call CANFD_SendMillisecondsMultiWait();
+    $Send_Second_frame_CMD_PASS = CastVariable("Bool",$Result);
+    $Second_frame_RECE = CastVariable("String",$CAN_Rev_Msg); 
+    $PWM_OUT_CMD=$Send_Second_frame_CMD_PASS && $Send_First_frame_CMD_PASS;
+    $_Loop_=$_Loop_+1;
+  }
+    if($Report_Mark_SendMessage_Enable)
+    {
+      $MeasName = "SET "+$PIN+" "+$STATE_NAME+"_SEND1";
+      RecordMeasurementPassFail($MeasName, $First_frame_CMD, "Bool", true, true);
+      $MeasName = "SET "+$PIN+" "+$STATE_NAME+"_SEND21";
+      RecordMeasurementPassFail($MeasName, $Second_frame_CMD, "Bool", true, true);
+    }
+    if($Report_Mark_ReceiveMessage_Enable)
+    {
+      $MeasName = "SET "+$PIN+" "+$STATE_NAME+"_RECE1";
+      RecordMeasurementPassFail($MeasName, $First_frame_RECE, "Bool", true, $Send_First_frame_CMD_PASS);
+      $MeasName = "SET "+$PIN+" "+$STATE_NAME+"_RECE21";
+      RecordMeasurementPassFail($MeasName, $Second_frame_RECE, "Bool", true, $Send_Second_frame_CMD_PASS);
+    
+    }
+
+    return;
+}
+function CHECK_PWMOUT_DEBUG()  // 
+{
+    if($g_PWMOUT_TestDebug==true)
+  {
+	if(!$PWM_TEST_PASS)
+	{  
+	  //进入这个case 可以测试当前pin 
+	  $temp = $PIN+" PWN OUT FAIL,Please measure the PIN Frequency,Click OK to continue";
+	  $TestContinue = OperatorPrompt($temp, "OKCancel");
+	  $Result = StringComparison($TestContinue,"Cancel","==");
+	  if( $Result==true)
+	  {
+	    StopTestCell($CellNumber);
+	  }
+	}
+  }
+  return;
+}
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Analog_INPUT_TEST//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+function CHECK_AI_DEBUG() // 检查AI测试是否进入DEBUG模式，弹出对话框可以等待手动测试
+{
+    // get bit data from  $AI_Binary_String
+  //**INPUT PARAM
+    //~ $ AI_State1_LSL   来自Excel tabel
+    //~$AI_State1_USL
+    //~ $PIN
+   //**OUTPUT PARAM
+    //~ $Pin_AI_Vol   // 解析的AI 电压值
+  
+  if($g_AI_TestDebug==true)
+  {
+    // 判断是否在范围了
+    $_debug_Pin_AI_Vol=$Pin_AI_Vol>$AI_State_LSL && $Pin_AI_Vol<$AI_State_USL ;
+    if(!$_debug_Pin_AI_Vol)
+    {
+      //进入这个case 可以测试当前pin 的电压
+      $temp = $PIN+" Please measure the PIN voltage,Click OK to continue";
+      $TestContinue = OperatorPrompt($temp, "OKCancel");
+      $Result = StringComparison($TestContinue,"Cancel","==");
+      if( $Result==true)
+      {
+	StopTestCell($CellNumber);
+      }
+    }
+  }
+  return;
+}
+function Parse_AI_DATA()  // 解析AI HEX 值
+{
+  // get bit data from  $AI_Binary_String
+  //**INPUT PARAM
+    //~ $AI_StartBit   来自Excel tabel
+   //**OUTPUT PARAM
+    //~ $Pin_AI_Vol   // 解析的AI 电压值
+  
+  $AI_Start_Byte	=  $AI_StartBit/8;
+  $TempMag= "AI_Start_Byte="+$AI_Start_Byte;
+  UpdateStatus($TempMag);
+  //~ UpdateStatus($AI_Start_Byte);l
+  $AI_End_Byte	=Add($AI_Start_Byte,1);
+  
+  $TempMag= "AI_End_Byte="+$AI_End_Byte;
+  UpdateStatus($TempMag);
+  //~ UpdateStatus($AI_End_Byte);l
+  $AI_Start_Byte = Array1DGetValue($CAN_Rev_Msg_array,$AI_Start_Byte);
+  $AI_End_Byte = Array1DGetValue($CAN_Rev_Msg_array,$AI_End_Byte);
+  
+  //~ $Pin_AI_Vol = $AI_End_Byte+$AI_Start_Byte;
+  $Pin_AI_Vol = $AI_Start_Byte+$AI_End_Byte;
+  $TempMag= "Pin_AI_Vol_HEX="+$Pin_AI_Vol;
+  UpdateStatus($TempMag);
+  $Pin_AI_Vol  = HexStringToInteger($Pin_AI_Vol);
+  $TempMag= "Pin_AI_Vol="+"_"+$AI_Function+$Pin_AI_Vol;
+  UpdateStatus($TempMag);
+  return;
+}
+function SUB_Read_Analog() // 读取所有的AI状态值，返回HEX不解析
+{
+    
+    UpdateStatus("//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Read DUT Analog INPUT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n");
+    //~ 公共函数，获取所有Analog的Data 以下为Demo Data
+    //~ ID:07E8,data:10 54 71 03 C0 82 00 64 01 F7 00 64 00 00 00 64 00 00 00 00 03 E8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 01 F4 00 00 ;I
+    //~D:07E8,data:21 01 F4 00 00 00 00 00 00 00 00 00 64 00 00 00 00 00 00 00 00 00 00 AA ;
+  
+    $CAN_Rev_Msg_21_frame="";
+    $CAN_Rev_Msg_22_frame="";
+    $CAN_Rev_Msg_23_frame="";
+    $CAN_Rev_Msg_First_frame="";
+    $CAN_Rev_Msg_array=""; 
+    $CAN_Send_Msg = "04 31 03 C0 84 CC CC CC";
+    $CAN_Rev_ExpMsg = "ID:07E8,data:10 E0 71 03 C0 84";	
+    $MeasurementName = "Read_Analog_INPUT(First_frame)";
+    $Data_Byte_length	= 220;
+  //send can msg
+    $Loop=0;
+    $Result=false;
+    while($Loop<3 && $Result==false)
+    { 
+      call ZLG_CANFD_Send();
+      SleepMilliseconds(30);
+      call ZLG_CANFD_Rev();
+      //~ UpdateStatus($CAN_Rev_Msg);
+      UpdateStatus($CAN_Rev_Msg);
+      $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+      $Loop=$Loop+1;
+    }
+    
+    $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
+    $CAN_Rev_Msg_First_frame=$CAN_Rev_Msg ;
+    $CAN_Rev_Msg_First_frame = StringParse($CAN_Rev_Msg_First_frame, $CAN_Rev_ExpMsg, ";"); 
+    $CAN_Rev_Msg_First_frame = StringTrim($CAN_Rev_Msg_First_frame); //删除前后空白
+    
+   // ~~~~~~~~~获取续帧~~~~~~~
+    $CAN_Send_Msg = "30 00 00 CC CC CC CC CC";
+    $CAN_Rev_ExpMsg = "ID:07E8,data:23";	
+    $MeasurementName = "Read_Analog_INPUT(21_23frame)";
+    call ZLG_CANFD_Send();//send can msg
+    SleepMilliseconds(100);
+    call ZLG_CANFD_Rev();
+    $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
+    
+    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    //~ UpdateStatus( $CAN_Rev_Msg);
+    
+    //整合数据
+    $CAN_Rev_Msg_21_frame=StringParse($CAN_Rev_Msg,"ID:07E8,data:21",";");
+    $CAN_Rev_Msg_21_frame = StringTrim($CAN_Rev_Msg_21_frame); //删除前后空白
+    
+    $CAN_Rev_Msg_22_frame=StringParse($CAN_Rev_Msg,"ID:07E8,data:22",";");
+    $CAN_Rev_Msg_22_frame = StringTrim($CAN_Rev_Msg_22_frame); //删除前后空白
+    
+    $CAN_Rev_Msg_23_frame=StringParse($CAN_Rev_Msg,"ID:07E8,data:23","AA");
+    $CAN_Rev_Msg_23_frame = StringTrim($CAN_Rev_Msg_23_frame); //删除前后空白
+    
+    //~ UpdateStatus( "OK~~~\n");
+    //~ UpdateStatus( $CAN_Rev_Msg_First_frame);
+    //~ UpdateStatus( $CAN_Rev_Msg_21_frame);
+    //~ UpdateStatus( $CAN_Rev_Msg_22_frame);
+    //~ UpdateStatus( $CAN_Rev_Msg_23_frame);
+    //~ UpdateStatus( "OK~~~\n");
+    
+    //拼接两帧数据 高位在前
+    $CAN_Rev_Msg=$CAN_Rev_Msg_First_frame+" "+$CAN_Rev_Msg_21_frame+" "+$CAN_Rev_Msg_22_frame+" "+$CAN_Rev_Msg_23_frame; 
+    $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
+    UpdateStatus($CAN_Rev_Msg); 
+    // CAN_Rev_Msg to CAN_Rev_Msg_array
+    $CAN_Rev_Msg_array = StringSplitToArray($CAN_Rev_Msg," ",$Data_Byte_length);
+    $Rev_Msg_array_Len=ArrayGetLength($CAN_Rev_Msg_array);
+    // 检查长度
+    $Result = NumericComparison($Rev_Msg_array_Len,$Data_Byte_length,"==");
+    $temp= "Rev_Msg_array_Len="+$Rev_Msg_array_Len;
+    UpdateStatus( $temp);
+    //~ $measName="Analog_INPUT_Data_Length";
+    //~ RecordMeasurementPassFail($measName, $Rev_Msg_array_Len, "Bool", true,$Result );
+    $measName="Analog_INPUT_DATA";
+    RecordMeasurement($measName, $CAN_Rev_Msg, "NA", true); 
+    
+    UpdateStatus("//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Read_Analog_INPUT_END~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n");
+    return;
+ }
+ 
+ 
+
+function Load_AI_STEP_DATA()  // 从Excel tab 中获取一行测试数据
+{
+	// Loading Config info
+	$rowArray 						= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+
+	$AI_PIN						=Array1DGetValue($rowArray ,0);
+	$AI_Function					=Array1DGetValue($rowArray ,1);
+	$AI_Singal_Type					=Array1DGetValue($rowArray ,2);
+	$remark						=Array1DGetValue($rowArray ,3);
+	$AI_LoadInfo					=Array1DGetValue($rowArray ,4);
+	$AI_StartBit					=Array1DGetValue($rowArray ,5);
+	$AI_DUT_CMD					=Array1DGetValue($rowArray ,6);
+	$AI_LoadboxCMD_State0			=Array1DGetValue($rowArray ,7);
+      
+	$AI_state1_info					=Array1DGetValue($rowArray ,8);
+	$AI_BoardNO_relay_State1			=Array1DGetValue($rowArray ,9);
+	$AI_LoadBoxCMD_Sate1			=Array1DGetValue($rowArray ,10);
+	$AI_State1_LSL					=Array1DGetValue($rowArray ,11);
+	$AI_State1_USL					=Array1DGetValue($rowArray ,12);
+      
+	$AI_state2_info					=Array1DGetValue($rowArray ,13);
+	$AI_BoardNO_relay_State2			=Array1DGetValue($rowArray ,14);
+	$AI_LoadBoxCMD_Sate2			=Array1DGetValue($rowArray ,15);
+	$AI_State2_LSL					=Array1DGetValue($rowArray ,16);
+	$AI_State2_USL					=Array1DGetValue($rowArray ,17);
+	
+	$TestEnable					=Array1DGetValue($rowArray ,18);
+	$ParallelTest					=Array1DGetValue($rowArray ,19);
+	//~ OperatorPrompt("Test", "OK");
+	//Show Pin info
+	$TemMsg="\n~~~~~~~~"+$AI_PIN+"_"+$AI_Function+"_State1 Start Test~~~~~~~~\n";
+	UpdateStatus($TemMsg);
+	//show test item to Debug view
+	return;
+      }
+
+
+
+ function Analog_INPUT_RES_TYPE_TEST()
+{
+    SetTestName("AI_RES_TYPE");
+    $BeforReadAI_ms=500;
+    $AI_rate=0.0012207;
+    call Fixtures_LoadBox_LoadOn();
+    $worksheet = 3; //shell AI
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "T";
+    $endRow = 43;
+    //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4_0327.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    call LoadBoxResetSW(); // All AI load reset
+    call Fixtures_LoadBox_LoadOn();
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+	
+	call Load_AI_STEP_DATA(); // Loading Config info
+	$AI_TestEnable = NumericComparison($TestEnable, 1, "==");
+	$Temp = "AI_TestEnable="+$AI_TestEnable;
+	UpdateStatus($Temp);
+      
+	if($AI_TestEnable==true) //检查本步骤是否测试，若不测试将直接return，
+	{
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  //~~~~~~~~~~~~~~~~~~~~State1 Start Test//~~~~~~~~~~~~~~~~~~~~~~
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  $View_TXT_String =$AI_PIN+"_"+$AI_Function+"_State1 Start Test";
+	  call View_TXT_STEP_MSG(); //Show Step info
+	  //Check for parallel testing
+	  //call set load box to state1
+	  ($returned, $found)  = Serial_SendMillisecondsBool($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate1,"OK",500);
+	  $returned="LoadBox Set "+$AI_LoadBoxCMD_Sate1+"="+$returned;
+	   UpdateStatus($returned);
+	  if($Report_Mark_LoadBox_Action_Enable) 
+	  {
+	    $measurementName= $AI_PIN+" "+$AI_state1_info;
+	    RecordMeasurementPassFail($measurementName, $found, "bool", true, $found);
+	  }
+	  //delay 200ms
+	  SleepMilliseconds($BeforReadAI_ms);  //拉载后延时多久去读取AI值
+	  //read AI state
+	  call SUB_Read_Analog();  // out Pararm $AI_Binary_String
+	  
+	  call Parse_AI_DATA();
+	  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	  // set MeasuName
+	  $MeasuName = $AI_PIN+"_"+$AI_state1_info+"_Vol";
+	  RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $AI_State1_LSL, $AI_State1_USL, true);
+	  
+	  //show test item to Debug view
+	  $AI_State_LSL = CastVariable("Float",$AI_State1_LSL);
+	  $AI_State_USL = CastVariable("Float",$AI_State1_LSL);	  
+	  $PIN = CastVariable("String",$AI_PIN);
+	  call CHECK_AI_DEBUG();
+	  call LoadBoxResetSW();
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  //~~~~~~~~~~~~~~~~~~~~State2 Start Test//~~~~~~~~~~~~~~~~~~~~~~
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  $View_TXT_String =$AI_PIN+"_"+$AI_Function+"_State1 Start Test";
+	  call View_TXT_STEP_MSG(); //Show Step info
+	  
+	  //Check for parallel testing
+
+	    //call set load box to state2
+	    ($returned, $found)  = Serial_SendMillisecondsBool($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate2,"OK",500);
+	    $returned="LoadBox Set "+$AI_LoadBoxCMD_Sate1+"="+$returned;
+	     UpdateStatus($returned);
+	    if($Report_Mark_LoadBox_Action_Enable) 
+	    {
+	      $measurementName= $AI_PIN+" "+$AI_state2_info;
+	      RecordMeasurementPassFail($measurementName, $found, "bool", true, $found);
+	    }
+	    //delay 200ms
+	    SleepMilliseconds($BeforReadAI_ms);  //拉载后延时多久去读取AI值
+	    //read AI state
+	    call SUB_Read_Analog();  // out Pararm $AI_Binary_String
+	  
+	  call Parse_AI_DATA();
+	  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	  // set MeasuName
+	  $MeasuName = $AI_PIN+"_"+$AI_state2_info+"_Vol";
+	  RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $AI_State2_LSL, $AI_State2_USL, true);
+	  
+	  //show test item to Debug view
+	  $AI_State_LSL = CastVariable("Float",$AI_State2_LSL);
+	  $AI_State_USL = CastVariable("Float",$AI_State2_LSL);	  
+	  $PIN = CastVariable("String",$AI_PIN);
+	  call CHECK_AI_DEBUG();
+	  call LoadBoxResetSW();
+	}
+	$rows_Loop=$rows_Loop+1;
+    }
+    return;
+}
+ function Analog_INPUT_VOL_TYPE_TEST()
+{
+    SetTestName("AI_VOL_TYPE");
+    $BeforReadAI_ms=500;
+    $AI_rate=0.0012207;
+    call Fixtures_LoadBox_LoadOn();
+    $worksheet = 4; //shell AI
+    $startcolumn = "A";
+    $startRow = 2;
+    $endColumn = "T";
+    $endRow = 7;
+    //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4_0327.xlsx";
+    call LoadExcelConfigFile(); //return array ()
+    call LoadBoxResetSW(); // All AI load reset
+    call Fixtures_LoadBox_LoadOn();
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+	call Load_AI_STEP_DATA(); // Loading Config info
+	$AI_TestEnable = NumericComparison($TestEnable, 1, "==");
+	$Temp = "AI_TestEnable="+$AI_TestEnable;
+	UpdateStatus($Temp);
+      
+	if($AI_TestEnable==true) //检查本步骤是否测试，若不测试将直接return，
+	{
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+	  //~~~~~~~~~~~~~~~~~~~~State1 Start Test//~~~~~~~~~~~~~~~~~~~~~~//
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+	  $View_TXT_String =$AI_PIN+"_"+$AI_Function+"_State1 Start Test";
+	  call View_TXT_STEP_MSG(); //Show Step info
+	  //Check for parallel testing
+	 
+	  call RIGOL_DG5072_Channel2_Set_3V3();
+	  $ParallelTest = NumericComparison($ParallelTest, 1, "==");
+	  $Temp = "ParallelTest="+$ParallelTest;
+	  UpdateStatus($Temp);
+	  
+	  if(!$ParallelTest)  // 如果不是并行测试项目，将再次却换继电器然后读取AI Data，反之直接读取之前的AI状态
+	  {
+	    //call set load box to state1
+	    ($returned, $found)  = Serial_SendMillisecondsBool($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate1,"OK",500);
+	    $returned="LoadBox Set "+$AI_LoadBoxCMD_Sate1+"="+$returned;
+	     UpdateStatus($returned);
+	    if($Report_Mark_LoadBox_Action_Enable) 
+	    {
+	      $measurementName= $AI_PIN+" "+$AI_state1_info;
+	      RecordMeasurementPassFail($measurementName, $found, "bool", true, $found);
+	    }
+	    //delay 200ms
+	    SleepMilliseconds($BeforReadAI_ms);  //拉载后延时多久去读取AI值
+	    //read AI state
+	    call SUB_Read_Analog();  // out Pararm $AI_Binary_String
+	  }
+	  call Parse_AI_DATA();
+	  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	  // set MeasuName
+	  $MeasuName = $AI_PIN+"_"+$AI_state1_info+"_Vol";
+	  RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $AI_State1_LSL, $AI_State1_USL, true);
+	  
+	  //show test item to Debug view
+	  $AI_State_LSL = CastVariable("Float",$AI_State1_LSL);
+	  $AI_State_USL = CastVariable("Float",$AI_State1_LSL);	  
+	  $PIN = CastVariable("String",$AI_PIN);
+	  call CHECK_AI_DEBUG();
+	  call LoadBoxResetSW();
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+	  //~~~~~~~~~~~~~~~~~~~~State2 Start Test//~~~~~~~~~~~~~~~~~~~~~~//
+	  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+	  $View_TXT_String =$AI_PIN+"_"+$AI_Function+"_State1 Start Test";
+	  call View_TXT_STEP_MSG(); //Show Step info
+	  call RIGOL_DG5072_Channel2_Set_1V8();
+	  //call set load box to state2
+	  ($returned, $found)  = Serial_SendMillisecondsBool($g_LoadBox_Handle,$AI_LoadBoxCMD_Sate1,"OK",500);
+	  $returned="LoadBox Set "+$AI_LoadBoxCMD_Sate1+"="+$returned;
+	  UpdateStatus($returned);
+	  if($Report_Mark_LoadBox_Action_Enable) 
+	  {
+	    $measurementName= $AI_PIN+" "+$AI_state1_info;
+	    RecordMeasurementPassFail($measurementName, $found, "bool", true, $found);
+	  }
+	  //delay 200ms
+	  SleepMilliseconds($BeforReadAI_ms);  //拉载后延时多久去读取AI值
+	  //read AI state
+	    call SUB_Read_Analog();  // out Pararm $AI_Binary_String
+	  call Parse_AI_DATA();
+	  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	  // set MeasuName
+	  $MeasuName = $AI_PIN+"_"+$AI_state2_info+"_Vol";
+	  RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $AI_State2_LSL, $AI_State2_USL, true);
+	  
+	  //show test item to Debug view
+	  $AI_State_LSL = CastVariable("Float",$AI_State2_LSL);
+	  $AI_State_USL = CastVariable("Float",$AI_State2_LSL);	  
+	  $PIN = CastVariable("String",$AI_PIN);
+	  call CHECK_AI_DEBUG();
+	  call LoadBoxResetSW();
+	}
+	$rows_Loop=$rows_Loop+1;
+    }
+    return;
+}
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~full_bridge_driver_TEST~~~~~~~~~~~~~~~~~
+function FULL_Bridge()
+{
+    //~ OperatorPrompt($DI_PIN, "OK");
+    call FULL_Bridge_TEST_Sate1();
+    call FULL_Bridge_TEST_Sate2();
+    call FULL_Bridge_TEST_Sate3();
+    call J8_09_J8_010_Corotation();
+    call J8_09_J8_010_Reverses();
+    call J8_09_J8_010_brake();
+    call J8_12_J8_010_Corotation();
+    call J8_12_J8_010_Reverses();
+    call J8_12_J8_010_brake();
+    call J6_02_J6_04_Corotation();
+    call J6_02_J6_04_Reverses();
+    call J6_02_J6_04_brake();
+    call J6_04_J4_03_Corotation();
+    call J6_04_J4_03_Reverses();
+    call J6_04_J4_03_brake();
+    return;
+  }
+
+function FULL_Bridge_TEST_Sate3()
+{
+    call Fixtures_LoadBox_LoadOn();
+    SetTestName("FULL_Bridge");
+    $worksheet 	= 8; //shell FULL_Bridge
+    $startcolumn 	= "A";
+    $startRow 	= 4;
+    $endColumn 	= "T";
+    $endRow 	= 20;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+    call LoadExcelConfigFile();
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+      // Loading Config info
+      $rowArray 		= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+      
+      $PIN					=Array1DGetValue($rowArray ,0);
+      $Function				=Array1DGetValue($rowArray ,1);
+      $singal_type				=Array1DGetValue($rowArray ,2);
+      
+      $StartBit				=Array1DGetValue($rowArray ,4);
+      $bit_wide				=Array1DGetValue($rowArray ,5);
+      
+      $DUT_CMD_STATE1		=Array1DGetValue($rowArray ,6); //Start1 Forward turn
+      $DUT_CMD_STATE2		=Array1DGetValue($rowArray ,9); //Start2 reverse turn
+      $DUT_CMD_STATE3		=Array1DGetValue($rowArray ,12); //Start3  brake
+      
+      $DMM_CH				=Array1DGetValue($rowArray ,16);
+      $LoadBoxCMD			=Array1DGetValue($rowArray ,15);
+      
+      //Start1 Forward turn
+      $LSL_STATE1			=Array1DGetValue($rowArray ,7);
+      $USL_STATE1			=Array1DGetValue($rowArray ,8);
+      //Start2 reverse turn
+      $LSL_STATE2			=Array1DGetValue($rowArray ,10);
+      $USL_STATE2			=Array1DGetValue($rowArray ,11);	
+      //Start3  brake
+      $LSL_STATE3			=Array1DGetValue($rowArray ,13);
+      $USL_STATE3			=Array1DGetValue($rowArray ,14);	
+      
+      $StepEnable				=Array1DGetValue($rowArray ,18);
+      $ParallelTest				=Array1DGetValue($rowArray ,19);
+      
+      $StepEnable = NumericComparison($StepEnable, 1, "==");
+      if($StepEnable)  //检查是否使能测试
+      {
+	//Set test Name 
+	$MeasName = $PIN+"_Braking";
+	// show row info
+	$TempMsg="~~~~~"+$MeasName+"Test"+"~~~~~";
+	UpdateStatus($TempMsg);
+	
+	//赋值给 Generate_Motor_Control_Command function
+	$Motor_Control_Start_Bit = StringTrim($StartBit);    			// satrt 
+	$Motor_Control_Value_Int = StringTrim($DUT_CMD_STATE3); 	// 10 ,01 11 ,00  
+	$Motor_Control_Span_Bit = StringTrim($bit_wide);			// 位宽
+	call Generate_Motor_Control_Command();
+	
+	// Send and Rece Can msg
+	$CAN_Send_Msg = "00 0C 31 01 C0 85 "+$Motor_Control_CMD_String+" CC CC";
+	$CAN_Rev_ExpMsg = "04 71 01 C0 85";
+	$CANFD_SEND_LOOP=3;
+	$Rev_Delay=100;
+	call CANFD_SendMillisecondsMultiWait();
+	if($Report_Mark_SendMessage_Enable)
+	{
+	  $MeasName_SEND=$MeasName+"_SEND";
+	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "NA", true, true);
+	}
+	if($Report_Mark_ReceiveMessage_Enable)
+	{
+	  $MeasName_RECE=$MeasName+"_RECE";
+	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "NA", true, $Result);
+	}
+	
+	SleepMilliseconds(1000);
+	// call test vol
+	$Rang =100;
+	$Channel = 	CopyVariable($DMM_CH);
+	$lowerLimit 	= CopyVariable($LSL_STATE3);
+	$upperLimit 	= CopyVariable($USL_STATE3);
+	//Output:
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage();
+	UpdateStatus($DMMRead_Vol);
+	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	UpdateStatus($TempMsg);
+	$measureName=$MeasName;
+	$inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
+	  if($inLimits)
+	  {
+	    $DMMRead_Vol  = Abs($DMMRead_Vol);
+	  }
+	RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
+	if($g_FULL_Bridge_Debug==true)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
+	  }
+      }
+      $rows_Loop=$rows_Loop+1;
+    }
+      return;
+  }
+
+
+function FULL_Bridge_TEST_Sate2()
+{
+    call Fixtures_LoadBox_LoadOn();
+    SetTestName("FULL_Bridge");
+    $worksheet 	= 8; //shell FULL_Bridge
+    $startcolumn 	= "A";
+    $startRow 	= 4;
+    $endColumn 	= "T";
+    $endRow 	= 20;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+    call LoadExcelConfigFile();
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+      // Loading Config info
+      $rowArray 		= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+      
+      $PIN					=Array1DGetValue($rowArray ,0);
+      $Function				=Array1DGetValue($rowArray ,1);
+      $singal_type				=Array1DGetValue($rowArray ,2);
+      
+      $StartBit				=Array1DGetValue($rowArray ,4);
+      $bit_wide				=Array1DGetValue($rowArray ,5);
+      
+      $DUT_CMD_STATE1		=Array1DGetValue($rowArray ,6); //Start1 Forward turn
+      $DUT_CMD_STATE2		=Array1DGetValue($rowArray ,9); //Start2 reverse turn
+      $DUT_CMD_STATE3		=Array1DGetValue($rowArray ,12); //Start3  brake
+      
+      $DMM_CH				=Array1DGetValue($rowArray ,16);
+      $LoadBoxCMD			=Array1DGetValue($rowArray ,15);
+      
+      //Start1 Forward turn
+      $LSL_STATE1			=Array1DGetValue($rowArray ,7);
+      $USL_STATE1			=Array1DGetValue($rowArray ,8);
+      //Start2 reverse turn
+      $LSL_STATE2			=Array1DGetValue($rowArray ,10);
+      $USL_STATE2			=Array1DGetValue($rowArray ,11);	
+      //Start3  brake
+      $LSL_STATE3			=Array1DGetValue($rowArray ,13);
+      $USL_STATE3			=Array1DGetValue($rowArray ,14);	
+      
+      $StepEnable				=Array1DGetValue($rowArray ,18);
+      $ParallelTest				=Array1DGetValue($rowArray ,19);
+      
+      $StepEnable = NumericComparison($StepEnable, 1, "==");
+      if($StepEnable)  //检查是否使能测试
+      {
+	//Set test Name 
+	$MeasName = $PIN+"_Reverses";
+	// show row info
+	$TempMsg="~~~~~"+$MeasName+"Test"+"~~~~~";
+	UpdateStatus($TempMsg);
+	
+	//赋值给 Generate_Motor_Control_Command function
+	$Motor_Control_Start_Bit = StringTrim($StartBit);    			// satrt 
+	$Motor_Control_Value_Int = StringTrim($DUT_CMD_STATE2); 	// 10 ,01 11 ,00  
+	$Motor_Control_Span_Bit = StringTrim($bit_wide);			// 位宽
+	
+	call Generate_Motor_Control_Command();
+	$CAN_Send_Msg = "00 0C 31 01 C0 85 "+$Motor_Control_CMD_String+" CC CC";
+	//~~Send_CMD~~~~~
+	$CAN_Rev_ExpMsg = "04 71 01 C0 85";
+	$CAN_Rev_ExpMsg = "04 71 01 C0 85";
+	$CANFD_SEND_LOOP=3;
+	$Rev_Delay=100;
+	call CANFD_SendMillisecondsMultiWait();
+	if($Report_Mark_SendMessage_Enable)
+	{
+	  $MeasName_SEND=$MeasName+"_SEND";
+	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "NA", true, true);
+	}
+	if($Report_Mark_ReceiveMessage_Enable)
+	{
+	  $MeasName_RECE=$MeasName+"_RECE";
+	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "NA", true, $Result);
+	}
+	
+	SleepMilliseconds(1000);
+	// call test vol
+	$Rang =100;
+	$Channel		 = CopyVariable($DMM_CH);
+	$lowerLimit 	= CopyVariable($LSL_STATE2);
+	$upperLimit 	= CopyVariable($USL_STATE2);
+	//Output:
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage();
+	UpdateStatus($DMMRead_Vol);
+	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	UpdateStatus($TempMsg);
+	$measureName=$MeasName;
+
+	RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
+    	if($g_FULL_Bridge_Debug==true)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
+	  }
+      }
+      $rows_Loop=$rows_Loop+1;
+    }
+      return;
+  }
+
+function FULL_Bridge_TEST_Sate1()
+{
+    call Fixtures_LoadBox_LoadOn();
+    SetTestName("FULL_Bridge");
+    $worksheet 	= 8; //shell FULL_Bridge
+    $startcolumn 	= "A";
+    $startRow 	= 4;
+    $endColumn 	= "T";
+    $endRow 	= 20;
+    $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
+    UpdateStatus($Temp);
+    //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\LDCU_TestSequence.xlsx";
+    call LoadExcelConfigFile();
+    $rows_Loop=0;
+    while($rows_Loop < $rows_Length)
+    {
+      // Loading Config info
+      $rowArray 		= Array1DGetRowFrom2D($shell_Data_array, $rows_Loop); //Read row 
+      
+      $PIN					=Array1DGetValue($rowArray ,0);
+      $Function				=Array1DGetValue($rowArray ,1);
+      $singal_type				=Array1DGetValue($rowArray ,2);
+      
+      $StartBit				=Array1DGetValue($rowArray ,4);
+      $bit_wide				=Array1DGetValue($rowArray ,5);
+      
+      $DUT_CMD_STATE1		=Array1DGetValue($rowArray ,6); //Start1 Forward turn
+      $DUT_CMD_STATE2		=Array1DGetValue($rowArray ,9); //Start2 reverse turn
+      $DUT_CMD_STATE3		=Array1DGetValue($rowArray ,12); //Start3  brake
+      
+      $DMM_CH				=Array1DGetValue($rowArray ,16);
+      $LoadBoxCMD			=Array1DGetValue($rowArray ,15);
+      
+      //Start1 Forward turn
+      $LSL_STATE1			=Array1DGetValue($rowArray ,7);
+      $USL_STATE1			=Array1DGetValue($rowArray ,8);
+      //Start2 reverse turn
+      $LSL_STATE2			=Array1DGetValue($rowArray ,10);
+      $USL_STATE2			=Array1DGetValue($rowArray ,11);	
+      //Start3  brake
+      $LSL_STATE3			=Array1DGetValue($rowArray ,13);
+      $USL_STATE3			=Array1DGetValue($rowArray ,14);	
+      
+      $StepEnable				=Array1DGetValue($rowArray ,18);
+      $ParallelTest				=Array1DGetValue($rowArray ,19);
+      
+      $StepEnable = NumericComparison($StepEnable, 1, "==");
+      if($StepEnable)  //检查是否使能测试
+      {
+	//Set test Name 
+	$MeasName = $PIN+"_Corotation";
+	// show row info
+	$TempMsg="~~~~~"+$MeasName+"Test"+"~~~~~";
+	UpdateStatus($TempMsg);
+	
+	//赋值给 Generate_Motor_Control_Command function
+	$Motor_Control_Start_Bit = StringTrim($StartBit);    			// satrt 
+	$Motor_Control_Value_Int = StringTrim($DUT_CMD_STATE1); 	// 10 ,01 11 ,00  
+	$Motor_Control_Span_Bit = StringTrim($bit_wide);			// 位宽
+	call Generate_Motor_Control_Command();
+	$CAN_Send_Msg = "00 0C 31 01 C0 85 "+$Motor_Control_CMD_String+" CC CC";
+	//~~Send_CMD~~~~~
+	$CAN_Rev_ExpMsg = "04 71 01 C0 85";
+	$CANFD_SEND_LOOP=3;
+	$Rev_Delay=100;
+	call CANFD_SendMillisecondsMultiWait();
+
+	if($Report_Mark_SendMessage_Enable)
+	{
+	  $MeasName_SEND=$MeasName+"_SEND";
+	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "NA", true, true);
+	}
+	  if($Report_Mark_ReceiveMessage_Enable)
+	{
+	  $MeasName_RECE=$MeasName+"_RECE";
+	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "NA", true, $Result);
+	}
+	
+	SleepMilliseconds(1000);
+	if($g_FULL_Bridge_TestDebug)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $temp = $PIN+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
+	  }
+	
+	// call test vol
+	$Rang =100;
+	$Channel = 	CopyVariable($DMM_CH);
+	$lowerLimit 	= CopyVariable($LSL_STATE1);
+	$upperLimit 	= CopyVariable($USL_STATE1);
+	//Output:
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage();
+	UpdateStatus($DMMRead_Vol);
+	$TempMsg="~~~~~"+$MeasName+" End Test"+"~~~~~\r\n";
+	UpdateStatus($TempMsg);
+	$measureName=$MeasName;
+
+	RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
+	if($g_FULL_Bridge_Debug==true)
+	  {
+	    //进入这个case 可以测试当前pin 的电压
+	    $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
+	    $TestContinue = OperatorPrompt($temp, "OKCancel");
+	    $Result = StringComparison($TestContinue,"Cancel","==");
+	    if( $Result==true)
+	    {
+	      StopTestCell($CellNumber);
+	    }
+	  }
+      }
+      $rows_Loop=$rows_Loop+1;
+    }
+      return;
+  }
+
+function Generate_Motor_Control_Command()
+{
+    //INPUT：
+	//$Motor_Control_Start_Bit=6;     // satrt 
+	//$Motor_Control_Value_Int=3;	 // 10 ,01 11 ,00  
+	//$Motor_Control_Span_Bit=2;	 // 位宽
+    //OUTPUT:
+	//$Motor_Control_CMD_String  
+  
+    UpdateStatus("---->> Generate Motor_Control Command");
+    $Motor_Control_CMD_String="";   				//设置命令初始值
+    $Motor_Control_Byte_Limit=8;					//此处设置生成byte长度，默认Motor_Control为70 byte
+
+    $Motor_Control_Value_High_Limit=3;				//目前情况下，电机控制的状态最多为3
+    if($Motor_Control_Value_Int>$Motor_Control_Value_High_Limit)
+    {
+	$Display="Motor_Control_Value_Int setting is bigger than limit, please check the configure files, the current setting value is:"+$Motor_Control_Value_Int+"; The limit is:"+$Motor_Control_Value_High_Limit;
+	UpdateStatus($Display);
+	Abort("Warning:Motor_Control_Value_Int setting is bigger than limit, please check the configure files");
+    }
+    
+    
+  //计算需要替换的位置索引
+    $Motor_Control_Replace_Start_Index=Divide($Motor_Control_Start_Bit,8);			//按照起始位求出需要替换的起始位置，按照hex来计数	
+    $Motor_Control_Replace_Start_Index=Floor($Motor_Control_Replace_Start_Index);	//地板数取整，以确定需要替换索引位置
+
+    //计算需要替换的byte值
+    $Motor_Control_Shift_Left_Bit=Mod($Motor_Control_Start_Bit,8);				//计算左边占位，		
+    //~ $Motor_Control_Shift_Left_Bit=8-$Motor_Control_Shift_Left_Bit-$Motor_Control_Span_Bit;		//8bits减去左边占位以及span占位，就左移的情况
+    $Motor_Control_New_Status_Hex=IntegerToHexString($Motor_Control_Value_Int,2);	//这里使用字符串转换以保证hex长度为2个byte
+    $Motor_Control_New_Status_Hex = BitWiseShift($Motor_Control_New_Status_Hex ,$Motor_Control_Shift_Left_Bit,"<<");		//使用移位后无法保证字符串长度，需要在进行一次转换
+    $Motor_Control_New_Status_Int= HexStringToInteger($Motor_Control_New_Status_Hex);
+    $Motor_Control_New_Status_Hex=IntegerToHexString($Motor_Control_New_Status_Int,2);	//这里使用字符串转换以保证hex长度为2个byte
+
+    //~ UpdateStatus($Motor_Control_New_Status_Hex);
+    $Loop_Index=0;
+    while($Loop_Index<$Motor_Control_Byte_Limit)
+    {
+	if($Loop_Index==$Motor_Control_Replace_Start_Index)		//判断是否为需要替换的索引位置，若是需要替换的索引位置，命令需要增加替换的byte值
+	{
+	    $Motor_Control_CMD_String=$Motor_Control_CMD_String+$Motor_Control_New_Status_Hex;		
+	}
+	if($Loop_Index!=$Motor_Control_Replace_Start_Index)		//判断是否为需要替换的索引位置，若不是需要替换的索引位置，命令需要增加默认的值，Motor_Control命令为“00”
+	{
+	    $Motor_Control_CMD_String=$Motor_Control_CMD_String+"00";
+	}
+	$Loop_Index=$Loop_Index+1;					//index 累加索引，这一步操作必须在增加间隔符前操作
+	if($Loop_Index!=$Motor_Control_Byte_Limit)				//判断是否为最后一个byte，否则需要增加间隔符“ ”
+	{
+	    $Motor_Control_CMD_String=$Motor_Control_CMD_String+" ";
+	}
+    }
+    UpdateStatus( $Motor_Control_CMD_String);
+    return;
+}
+  
+  
+
+//左外后视镜面左右调节
+
+function J8_09_J8_010_Reverses()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 10 00 00 00 00 20 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J8_09_J8_010_Reverses";
+  $Rang =100;
+  $Channel 	= "112";
+  $lowerLimit =-14;
+  $upperLimit =-12;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+
+function J8_09_J8_010_Corotation()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 20 00 00 00 00 20 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J8_09_J8_010_Corotation";
+  $Rang =100;
+  $Channel 	= "112";
+  $lowerLimit =12;
+  $upperLimit =14;
+  call FULL_Bridge_Briver_2();
+    return;
+}
+
+function J8_09_J8_010_brake()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 30 00 00 00 00 20 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J8_09_J8_010_brake";
+  $Rang =100;
+  $Channel 	= "112";
+  $lowerLimit =0;
+  $upperLimit =0.5;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+
+
+//~~~~~~~~~~~~~~~
+function J8_12_J8_010_Reverses()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 04 00 00 00 00 10 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J8_12_J8_010_Reverses";
+  $Rang =100;
+  $Channel 	= "113";
+  $lowerLimit =-14;
+  $upperLimit =-12;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+function  J8_12_J8_010_Corotation()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 08 00 00 00 00 10 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J8_12_J8_010_Corotation";
+  $Rang =100;
+  $Channel 	= "113";
+  $lowerLimit =12;
+  $upperLimit =14;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+function J8_12_J8_010_brake()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 0C 00 00 00 00 10 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J8_12_J8_010_brake";
+  $Rang =100;
+  $Channel 	= "113";
+  $lowerLimit =0;
+  $upperLimit =0.5;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+
+
+//~~~~~~~~~~~~~~~
+function J6_02_J6_04_Corotation()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 00 04 00 00 00 FF CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J6_02_J6_04_Corotation";
+  $Rang =100;
+  $Channel 	= "115";
+  $lowerLimit =12;
+  $upperLimit =14;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+function J6_02_J6_04_Reverses()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 00 08 00 00 00 FF CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J6_02_J6_04_Reverses";
+  $Rang =100;
+  $Channel 	= "115";
+  $lowerLimit =-14;
+  $upperLimit =12;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+function J6_02_J6_04_brake()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 00 0C 00 00 00 FF CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J6_02_J6_04_brake";
+  $Rang =100;
+  $Channel 	= "115";
+  $lowerLimit =0;
+  $upperLimit =0.5;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+
+
+
+//~~~~~~~~~~~~~~~
+function J6_04_J4_03_Corotation()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 00 01 00 00 00 40 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J6_02_J4_03_Corotation";
+  $Rang =100;
+  $Channel 	= "125";
+  $lowerLimit =12;
+  $upperLimit =14;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+function J6_04_J4_03_brake()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 00 10 00 00 00 40 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J6_04_J4_03_brake";
+  $Rang =100;
+  $Channel 	= "125";
+  $lowerLimit =0;
+  $upperLimit =0.5;
+ 
+  call FULL_Bridge_Briver_2();
+  return;
+}
+function J6_04_J4_03_Reverses()
+{
+  $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 00 11 00 00 00 40 CC CC";
+  $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+  $CANFD_SEND_LOOP=3;
+  $Rev_Delay=100;
+  $MeasName="J6_04_J4_03_Reverses";
+  $Rang =100;
+  $Channel 	= "125";
+  $lowerLimit =12;
+  $upperLimit =14;
+  call FULL_Bridge_Briver_2();
+  return;
+}
+
+function FULL_Bridge_Briver_2()
+{
+    //~ $CAN_Send_Msg="00 0C 31 01 C0 85 00 00 10 00 00 00 00 20 CC CC";
+    //~ $CAN_Rev_ExpMsg = "04 71 01 C0 85";
+    //~ $CANFD_SEND_LOOP=3;
+    //~ $Rev_Delay=100;
+    //~ $MeasName="J8-09_J8-010_Corotation";
+    //~ $Rang =100;
+    //~ $Channel 	= "112";
+    //~ $lowerLimit =-14;
+    //~ $upperLimit =-12;
+    
+    call CANFD_SendMillisecondsMultiWait();
+    if($Report_Mark_SendMessage_Enable)
+    {
+      $MeasName_SEND=$MeasName+"_SEND";
+      RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "NA", true, true);
+    }
+    if($Report_Mark_ReceiveMessage_Enable)
+    {
+      $MeasName_RECE=$MeasName+"_RECE";
+      RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "NA", true, $Result);
+    }  
+    if($g_FULL_Bridge_Debug==true)
+    {
+	//进入这个case 可以测试当前pin 的电压
+	$temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
+	$TestContinue = OperatorPrompt($temp, "OKCancel");
+	$Result = StringComparison($TestContinue,"Cancel","==");
+	if( $Result==true)
+	{
+	  StopTestCell($CellNumber);
+	}
+      }
+    // call test vol
+     SleepMilliseconds(1000); 
+    //Output:
+    $DMMRead_Vol=0;
+    call Keysight6510_MeasureDCVoltage();
+    $measureName=$MeasName+"_VOL";
+  $inLimits = NumericLimitTestBool($DMMRead_Vol, -0.3, 0.3);  //消除误差
+      if($inLimits)
+      {
+	$DMMRead_Vol  = Abs($DMMRead_Vol);
+      }
+    RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, $lowerLimit, $upperLimit, true);
+    if($g_FULL_Bridge_Debug==true)
+    {
+      $inLimits = NumericLimitTestBool($DMMRead_Vol, $lowerLimit, $upperLimit);
+      if(!$inLimits)
+	{
+	  	//进入这个case 可以测试当前pin 的电压
+	      $temp = $measureName+" Please measure the PIN voltage,Click OKCancel to continue";
+	      $TestContinue = OperatorPrompt($temp, "OKCancel");
+	      $Result = StringComparison($TestContinue,"Cancel","==");
+	      if( $Result==true)
+	      {
+		StopTestCell($CellNumber);
+	      }
+	}
+
+      }
+
+    return;
+}
+
+
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~LoadExcelConfigFile~~~~~~~~~~~~~~~~~  
+function LoadExcelConfigFile()
+{
+      UpdateStatus("~~~~~~Load Execel File~~~~");
+  //INPUT-PARAM:
+  
+      //~ $worksheet = 2; //shell DI
+      //~ $startcolumn = "A";
+      //~ $startRow = 2;
+      //~ $endColumn = "M";
+      //~ $endRow = 42;
+      //~ $g_Config_excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+    
+  //OUTPUT-PARAM:
+      //~ $columns_Length
+      //~ $rows_Length
+      //~ $shell_Data_array
+      $excelHandle = ExcelOpenFile($g_Config_excelFile);
+      $shell_Data_array = ExcelGetRange($excelHandle, $worksheet, $startcolumn, $startRow, $endColumn, $endRow); 
+      ExcelCloseFile($excelHandle);
+      $dataArray_len= ArrayGetLength($shell_Data_array);
+      //~ UpdateStatus($dataArray_len);
+      $rows_Length = ArrayGetDimensionSize($shell_Data_array, 0); 
+      $columns_Length = ArrayGetDimensionSize($shell_Data_array, 1);  
+      UpdateStatus($rows_Length);
+      UpdateStatus($columns_Length);
+      return;
+}
+
+
+
+

@@ -1,0 +1,390 @@
+//~ ########################THE FIX CONTROLLER#####################################
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//File Name:			GOS_DIO96_Fixtures_Controls.jts
+//Customer: 			XPeng
+//Project:   			NULL
+//Creator:   			Fred Guo
+//Software Revision:	RevA1
+//Jabiltest Version:           7.50.30
+//Released:			2023/03/10
+//Description:		
+//////////////////////////////////////////Debug Sequence////////////////////////////////
+//~ $DeviceName="Dev1";
+//~ NI_DAQmx_Initialize();
+//~ NI_DAQmx_ResetDevice($DeviceName);
+//~ call LoadingFixConfig();
+//~ call Sub_SetFixInto();
+
+//~ call DIO96_Initialize();
+//~ call Cylinder_Initialize();
+//~ call Fix_Start();
+//~ End;call LoadingFixConfig();
+//~ //call Sub_SetFixInto();
+//~ call DIO96_Initialize();
+//~ call Cylinder_Initialize();
+//~ call Fix_Start();
+//~ call Cylinder_Initialize();
+//~ call Cylinder_Initialize();
+//~ End;
+//~ ~~~~~~~~~~~~~~~ LoadingFixConfig~~~~~~~~~~~~~~~ 
+function LoadingFixConfig()
+{
+  //~ $g_ConfigPath = "D:\\22684_H93_LDCU_EOL_TESTER\\SubScripts\\";
+  //~ $g_SysteM_Config_File = StringCat($ConfigPath,"FixturesConfig.ini");
+  //Fixconfig
+  $Fixconfig=StringCat($g_ConfigPath,"FixturesConfig.ini");
+  $Fix_Control_Task = "FixControls_Task";
+  UpdateStatus($Fixconfig);
+  // 获取Fixtures 类型# 1:ShieldedBox;0:Normal
+  $Fixtures_type= ReadIniFile($Fixconfig,"Root", "Fixtures_type"); 
+  UpdateStatus($Fixtures_type);
+  //---------Start Buttom 1---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config Start Buttom ~~~~~~~~~~~~~~");
+  $StartButtom1= ReadIniFile($Fixconfig,"Start_Config", "StartButtom1");
+  $StartButtom1 = StringSplitToArray($StartButtom1,"-",2);
+  $StartButtom1Port = Array1DGetValue($StartButtom1,0);
+  $StartButtom1Line = Array1DGetValue($StartButtom1,1);
+  UpdateStatus($StartButtom1Port);
+  UpdateStatus($StartButtom1Line);
+   //---------Start Buttom 2---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config Start Buttom2 ~~~~~~~~~~~~~~");
+  $StartButtom2= ReadIniFile($Fixconfig,"Start_Config", "StartButtom2");
+  $StartButtom2 = StringSplitToArray($StartButtom2,"-",2);
+  $StartButtom2Port = Array1DGetValue($StartButtom2,0);
+  $StartButtom2Line = Array1DGetValue($StartButtom2,1);
+  UpdateStatus($StartButtom2Port);
+  UpdateStatus($StartButtom2Line);
+  //---------UpSensor---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config UpSensor ~~~~~~~~~~~~~~");
+  $UpSensor= ReadIniFile($Fixconfig,"Fixtures_Sensor", "UpSensor");
+  $UpSensor = StringSplitToArray($UpSensor,"-",2);
+  $UpSensorPort = Array1DGetValue($UpSensor,0);
+  $UpSensorLine = Array1DGetValue($UpSensor,1);
+  //~ UpdateStatus($UpSensorPort);
+  //~ UpdateStatus($UpSensorLine);
+  //---------DownSensor---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config DownSensor ~~~~~~~~~~~~~~");
+  $DownSensor=ReadIniFile($Fixconfig,"Fixtures_Sensor", "DownSensor");
+  $DownSensor = StringSplitToArray($DownSensor,"-",2);
+  $DownSensorPort = Array1DGetValue($DownSensor,0);
+  $DownSensorLine = Array1DGetValue($DownSensor,1);
+  //~ UpdateStatus($DownSensorPort);
+  //~ UpdateStatus($DownSensorLine);
+  //---------InSensor---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config InSensor ~~~~~~~~~~~~~~");
+  $InSensor=ReadIniFile($Fixconfig,"Fixtures_Sensor", "InSensor");
+  $InSensor = StringSplitToArray($InSensor,"-",2);
+  $InSensorPort = Array1DGetValue($InSensor,0);
+  $InSensorLine = Array1DGetValue($InSensor,1);
+  //~ UpdateStatus($InSensorPort);
+  //~ UpdateStatus($InSensorLine);
+  //---------OutSensor---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config OutSensor ~~~~~~~~~~~~~~");
+  $OutSensor=ReadIniFile($Fixconfig,"Fixtures_Sensor", "OutSensor");
+  $OutSensor = StringSplitToArray($OutSensor,"-",2);
+  $OutSensorPort = Array1DGetValue($OutSensor,0);
+  $OutSensorLine = Array1DGetValue($OutSensor,1);
+  //~ UpdateStatus($OutSensorPort);
+  //~ UpdateStatus($OutSensorLine);
+  
+  if($Fixtures_type==1) //# 1:ShieldedBox;0:Normal (如果是屏蔽箱)
+  {
+      UpdateStatus("  ~~~~~~~~~~~~~~Get ini config Is Shielded Box! ~~~~~~~~~~~~~~");
+      //---------BoxOpenSensor---------
+      UpdateStatus("  ~~~~~~~~~~~~~~Get ini config BoxOpenSensor ~~~~~~~~~~~~~~");
+      $BoxOpenSensor=ReadIniFile($Fixconfig,"Fixtures_Sensor", "BoxOpenSensor");
+      $BoxOpenSensor = StringSplitToArray($BoxOpenSensor,"-",2);
+      $BoxOpenSensorPort = Array1DGetValue($BoxOpenSensor,0);
+      $BoxOpenSensorLine = Array1DGetValue($BoxOpenSensor,1);
+      //~ UpdateStatus($BoxOpenSensorPort);
+      //~ UpdateStatus($BoxOpenSensorLine);
+      //---------BoxCloseSensor---------
+      UpdateStatus("  ~~~~~~~~~~~~~~Get ini config BoxCloseSensor ~~~~~~~~~~~~~~");
+      $BoxCloseSensor=ReadIniFile($Fixconfig,"Fixtures_Sensor", "BoxCloseSensor");
+      $BoxCloseSensor = StringSplitToArray($BoxCloseSensor,"-",2);
+      $BoxCloseSensorPort = Array1DGetValue($BoxCloseSensor,0);
+      $BoxCloseSensorLine = Array1DGetValue($BoxCloseSensor,1);
+      //~ UpdateStatus($BoxCloseSensorPort);
+      //~ UpdateStatus($BoxCloseSensorLine);
+  }
+  //---------Up_cylinder---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config Up_cylinder ~~~~~~~~~~~~~~");
+  $Up_cylinder =ReadIniFile($Fixconfig,"Fixtures_cylinder", "Up_cylinder");
+  $Up_cylinder = StringSplitToArray($Up_cylinder,"-",2);
+  $Up_cylinderPort = Array1DGetValue($Up_cylinder,0);
+  $Up_cylinderLine = Array1DGetValue($Up_cylinder,1);
+    //---------Down_cylinder---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config Down_cylinder ~~~~~~~~~~~~~~");
+  $Down_cylinder =ReadIniFile($Fixconfig,"Fixtures_cylinder", "Down_cylinder");
+  $Down_cylinder = StringSplitToArray($Down_cylinder,"-",2);
+  $Down_cylinderPort = Array1DGetValue($Down_cylinder,0);
+  $Down_cylinderLine = Array1DGetValue($Down_cylinder,1);
+  
+  //---------In_cylinder---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config In_cylinder ~~~~~~~~~~~~~~");
+  $In_cylinder =ReadIniFile($Fixconfig,"Fixtures_cylinder", "In_cylinder");
+  $In_cylinder = StringSplitToArray($In_cylinder,"-",2);
+  $In_cylinderPort = Array1DGetValue($In_cylinder,0);
+  $In_cylinderLine = Array1DGetValue($In_cylinder,1);
+  
+    //---------Out_cylinder---------
+  UpdateStatus("  ~~~~~~~~~~~~~~Get ini config Out_cylinder ~~~~~~~~~~~~~~");
+  $Out_cylinder =ReadIniFile($Fixconfig,"Fixtures_cylinder", "Out_cylinder");
+  $Out_cylinder = StringSplitToArray($Out_cylinder,"-",2);
+  $Out_cylinderPort = Array1DGetValue($Out_cylinder,0);
+  $Out_cylinderLine = Array1DGetValue($Out_cylinder,1);
+   if($Fixtures_type==1) 
+     {
+	       //---------BoxOpen_cylinder---------
+      UpdateStatus(" ~~~~~~~~~~~~~~Get ini config BoxOpen_cylinder ~~~~~~~~~~~~~~");
+      $BoxOpen_cylinder =ReadIniFile($Fixconfig,"Fixtures_cylinder", "BoxOpen_cylinder");
+      $BoxOpen_cylinder = StringSplitToArray($BoxOpen_cylinder,"-",2);
+      $BoxOpen_cylinderPort = Array1DGetValue($BoxOpen_cylinder,0);
+      $BoxOpen_cylinderLine = Array1DGetValue($BoxOpen_cylinder,1);
+      
+	    //---------BoxClose_cylinder---------
+      UpdateStatus("  ~~~~~~~~~~~~~~Get ini config BoxClose_cylinder ~~~~~~~~~~~~~~");
+      $BoxClose_cylinder =ReadIniFile($Fixconfig,"Fixtures_cylinder", "BoxClose_cylinder");
+      $BoxClose_cylinder = StringSplitToArray($BoxClose_cylinder,"-",2);
+      $BoxClose_cylinderPort = Array1DGetValue($BoxClose_cylinder,0);
+      $BoxClose_cylinderLine = Array1DGetValue($BoxClose_cylinder,1);
+     }
+
+  return;
+}
+
+
+//~ ~~~~~~~~~~~ Cylinder Initialize~~~~~~~~~~~~~~~
+function Cylinder_Initialize()
+{
+  UpdateStatus("~~~~~~~~Fix Cylinder_Initialize!!~~~~~~~~~~~~");
+  
+  UpdateStatus($Fixtures_type);
+  if($Fixtures_type==1)
+  {
+      $Exists = CheckVariableExists($FixBoxOpen?);
+      call Sub_SetFixBoxOpen();
+  }
+  call Sub_SetFixUp();
+  call Sub_SetFixOut();
+  return;
+}
+///~~~~~~~~~~~~~~~Fix_Start~~~~~~~~~~~~~~~~~~~~
+function Fix_Start()
+{
+    call Sub_SetFixInto();
+    call Sub_SetFixDown();//下压到位
+
+    UpdateStatus($Fixtures_type);
+    if($Fixtures_type==1)
+    {
+      call Sub_SetFixBoxClose();
+    }
+  return;
+}
+
+//~ ~~~~~~~~~~~ Sub_SetFixBoxClose~~~~~~~~~~~~~~~
+function Sub_SetFixBoxClose()
+{
+    UpdateStatus("~~~~~~~~~~~~~~~Set Fix box close!!~~~~~~~~~~~~~~~");
+    $Loop_Flag =true;
+    $Loop_=0;
+    $result = false;
+    //~ OperatorPrompt ("Box Up Down Cylinder Initialize","OK");
+    while($Loop_Flag==true && $Loop_<=10)
+    {
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$BoxOpen_cylinderPort,$BoxOpen_cylinderLine,0,$Fix_Control_Task);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$BoxClose_cylinderPort,$BoxClose_cylinderLine,1,$Fix_Control_Task);
+      SleepMilliseconds(200); 
+      $IsBoxOpen = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$InSensorPort,$BoxOpenSensorLine,$Fix_Control_Task);
+      $IsBoxClose=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$OutSensorPort,$BoxCloseSensorLine,$Fix_Control_Task);  
+      if($IsBoxOpen==1 && $IsBoxClose==0)
+      {
+	  UpdateStatus("Fix box is Closed!!");
+	  $Loop_Flag= false;
+	  $result=true;  
+	 $FixBoxClose?= true;
+	 $FixBoxOpen?= false;
+      }
+	$Loop_ = $Loop_+1;
+	SleepMilliseconds(500); 
+    }
+    if($result==false)
+    {
+      Fail("Please check Box Open Close Cylinder&Sensor!!");
+      $FixBoxClose?= false;
+    }
+    return;
+  }
+
+//~ ~~~~~~~~~~~ Sub_SetFixBoxOpen~~~~~~~~~~~~~~~
+function Sub_SetFixBoxOpen()
+{
+    UpdateStatus("~~~~~~~~~~~~~~~Set Fix box open!!~~~~~~~~~~~~~~~");
+    $Loop_Flag =true;
+    $Loop_=0;
+    $result = false;
+    //~ OperatorPrompt ("Box Up Down Cylinder Initialize","OK");
+    while($Loop_Flag==true && $Loop_<=10)
+    {
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$BoxOpen_cylinderPort,$BoxOpen_cylinderLine,1,$Fix_Control_Task);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$BoxClose_cylinderPort,$BoxClose_cylinderLine,0,$Fix_Control_Task);
+      SleepMilliseconds(200); 
+      $IsBoxOpen = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$InSensorPort,$BoxOpenSensorLine,$Fix_Control_Task);
+      $IsBoxClose=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$OutSensorPort,$BoxCloseSensorLine,$Fix_Control_Task);  
+      if($IsBoxOpen==0 && $IsBoxClose==1)
+      {
+	  UpdateStatus("Fix box is Opened!!");
+	  $Loop_Flag= false;
+	  $result=true;  
+	$FixBoxOpen? =true;
+      }
+	$Loop_ = $Loop_+1;
+	SleepMilliseconds(500); 
+    }
+    if($result==false)
+    {
+      Fail("Please check Box Open Close Cylinder&Sensor!!");
+      $FixBoxOpen? =false;
+    }
+    return;
+  }
+//~ ~~~~~~~~~~~ Sub_SetFixInto~~~~~~~~~~~~~~~
+function Sub_SetFixInto()
+{
+      UpdateStatus("~~~~~~~~~~~~~~~Set Fix Into!!~~~~~~~~~~~~~~~");
+
+	//~ OperatorPrompt("Sub_SetFixInto", "OK");
+       
+      $Loop_Flag =true;
+      $Loop=0;
+      $result=false;
+      while($Loop_Flag ==true && $Loop<=10)
+      {
+	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Out_cylinderPort,$Out_cylinderLine,0,$Fix_Control_Task);
+	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$In_cylinderPort,$In_cylinderLine,1,$Fix_Control_Task);
+	SleepMilliseconds(200);
+	$IsFixIn = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$InSensorPort,$InSensorLine,$Fix_Control_Task);
+	$IsFixOut=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$OutSensorPort,$OutSensorLine,$Fix_Control_Task);  
+	if($IsFixIn==0 && $IsFixOut==1)
+	{
+	  	  $Loop_Flag= false;
+		  $result=true;
+		  UpdateStatus("Fix into Done!!");
+		  $FixInto? =true;
+	}
+	$Loop = $Loop+1;
+	SleepMilliseconds(500); 
+      }
+      if($result==false)
+      {
+	Fail("Please check In Out Cylinder&Sensor!!");
+	$FixInto? =false;
+      }
+       return;
+  }
+
+//~ ~~~~~~~~~~~ Sub_SetFixout~~~~~~~~~~~~~~~
+function Sub_SetFixOut()
+{
+      UpdateStatus("~~~~~~~~~~~~~~~Set Fix Out!!~~~~~~~~~~~~~~~");
+      $Loop_Flag =true;
+      $Loop=0;
+      $result=false;
+      while($Loop_Flag ==true && $Loop<=10)
+      {
+	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Out_cylinderPort,$Out_cylinderLine,1,$Fix_Control_Task);
+	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$In_cylinderPort,$In_cylinderLine,0,$Fix_Control_Task);
+	SleepMilliseconds(200);
+	$IsFixIn = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$InSensorPort,$InSensorLine,$Fix_Control_Task);
+	$IsFixOut=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$OutSensorPort,$OutSensorLine,$Fix_Control_Task);  
+	if($IsFixIn==1 && $IsFixOut==0)
+	{
+	  	  $Loop_Flag= false;
+		  $result=true;
+		  UpdateStatus("Fix into Out!!");
+		  $FixOut? =true;
+		  $FixInto? =false;
+	}
+	$Loop = $Loop+1;
+	SleepMilliseconds(500); 
+      }
+      if($result==false)
+      {
+	Fail("Please check In Out Cylinder&Sensor!!");
+	$FixOut?=false;
+	//~ $FixInto? =false;
+      }
+	return;
+}
+
+//~ ~~~~~~~~~~~ Sub_SetFixDown~~~~~~~~~~~~~~~
+function Sub_SetFixDown()
+{
+  UpdateStatus("Set Fix Down!!");  
+  $Loop_Flag =true;
+  $Loop=0;
+  $result=false;
+  while($Loop_Flag ==true && $Loop<=10)
+  {
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Up_cylinderPort,$Up_cylinderLine,0,$Fix_Control_Task);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Down_cylinderPort,$Down_cylinderLine,1,$Fix_Control_Task);
+      SleepMilliseconds(200);  
+      $IsFixUp = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$UpSensorPort,$UpSensorLine,$Fix_Control_Task);
+      $IsFixDown=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$DownSensorPort,$DownSensorLine,$Fix_Control_Task);  
+
+      if($IsFixUp==1 && $IsFixDown==0) //Down 到位
+      {
+	UpdateStatus("Fix Down Done!!");
+	$Loop_Flag= false;
+	$result=true;
+	$FixDown? =true;
+	
+      }
+      $Loop = $Loop+1;
+      SleepMilliseconds(500); 
+  }
+  if($result==false)
+  {
+    Fail("Please check Up Down Cylinder&Sensor!!");
+    $FixDown? =false;
+  }
+    return;
+} 
+//~ ~~~~~~~~~~~ Sub_SetFixUp~~~~~~~~~~~~~~~
+function Sub_SetFixUp()
+{
+      UpdateStatus("Set Fix Up!!");
+     
+      $Loop_Flag =true;
+  $Loop=0;
+  $result=false;
+  while($Loop_Flag ==true && $Loop<=10)
+  {
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Up_cylinderPort,$Up_cylinderLine,1,$Fix_Control_Task);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Down_cylinderPort,$Down_cylinderLine,0,$Fix_Control_Task);
+      SleepMilliseconds(200); 
+      $IsFixUp = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$UpSensorPort,$UpSensorLine,$Fix_Control_Task);
+      $IsFixDown=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$DownSensorPort,$DownSensorLine,$Fix_Control_Task);  
+
+      if($IsFixUp==0 && $IsFixDown==1) //up 到位
+      {
+	UpdateStatus("Fix Up Done!!");
+	$Loop_Flag= false;
+	$result=true;
+	$FixUp? =true;
+	$FixDown? =false;
+      }
+      $Loop = $Loop+1;
+      SleepMilliseconds(500); 
+  }
+  if($result==false)
+  {
+    Fail("Please check Up Down Cylinder&Sensor!!");
+    $FixUp? =false;
+  }
+  return;
+}
+
+
+

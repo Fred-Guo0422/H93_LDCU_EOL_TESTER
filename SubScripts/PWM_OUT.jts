@@ -1,0 +1,129 @@
+function PWM_OUT_TEST()  // TOP function 
+{
+  UpdateStatus("=>>>>>>>>>>>>>>>>>> PWM_OUT>>>>>>>>>>>>>>>>>>\r\n");
+  SetTestName("PWM_OUT");
+  $AFTER_SET_PWMOUT =1000;
+  // load config files
+  $worksheet = 7; //PWM OUT
+  $startcolumn = "A";
+  $startRow = 2;
+  $endColumn = "T";
+  $endRow = 12;
+  //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+  call LoadExcelConfigFile(); //return array ()
+  $rows_Loop =0;
+  while($rows_Length>$rows_Loop )
+  {
+    // Loading Config info
+    call Load_PWM_OUT_STEP_DATA(); // 加载EXcel 一行
+    $StepEnable = NumericComparison($StepEnable, 1, "==");
+    if($StepEnable)  //检查是否使能测试
+    {
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~State2 PWM_75 Test//~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //Set test Name 
+      $STATE_NAME = "PWM_75%";
+      // show row info
+      $TempMsg="~~~~~"+$STATE_NAME+" Start Test"+"~~~~~";
+      UpdateStatus($TempMsg);
+      //get CMD
+      $StartBit=StringTrim($StartBit);
+      $SendCMD = StringTrim($DUT_CMD_STATE2); 
+      call GET_PWMOUT_CMD();  //生成最终命令
+       //~ OperatorPrompt("GET_PWMOUT_CMD", "OK");
+      call SET_PWM_OUT_ON();  //发送命令请求PWM PIN 输出
+      
+      //~ OperatorPrompt("SET_PWM_OUT_ON", "OK");
+      SleepMilliseconds($AFTER_SET_PWMOUT); //等待输出稳定
+      
+      $Channel 		= CopyVariable($DMM_CH);
+      $Feq_LSL 		= CopyVariable($Feq_LSL_STATE2);
+      $Feq_USL 		= CopyVariable($Feq_USL_STATE2);
+      $duty_LSL 		= CopyVariable($duty_LSL_STATE2);
+      $duty_USL 		= CopyVariable($duty_USL_STATE2);
+      $PWM_LOOP=0;
+      $PWM_TEST_PASS=false;
+      while($PWM_TEST_PASS == false && $PWM_LOOP<5)
+      {
+	$DMMRead_FREQ=0;
+	call Keysight6510_MeasureFreq(); // call test FREQ
+	//add end test msg
+	UpdateStatus($DMMRead_FREQ);
+	$FREQ_inLimits = NumericLimitTestBool($DMMRead_FREQ, $Feq_LSL, $Feq_USL);
+	
+	$Rang =100;
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage(); // call test vol
+	UpdateStatus($DMMRead_Vol);
+	$duty = Divide($DMMRead_Vol,13.5);
+	$duty =Multiply($duty,100);
+	$duty_inLimits = NumericLimitTestBool($duty, $duty_LSL, $duty_USL);
+	$PWM_TEST_PASS= $duty_inLimits &&  $FREQ_inLimits;
+	$PWM_LOOP=$PWM_LOOP+1;
+      }
+      $measureName= $PIN+"_VOL_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "Hz", true, 8, 12, true);
+      $measureName= $PIN+"_FREQ_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $DMMRead_FREQ, "Hz", true, $Feq_LSL, $Feq_USL, true);
+       $measureName= $PIN+"_DUTY_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $duty, "%", true, $duty_LSL, $duty_USL, true);
+      
+      
+      call CHECK_PWMOUT_DEBUG();
+      
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~State1 PWM_72 Test//~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //Set test Name 
+      $STATE_NAME = "PWM_25%";
+      // show row info
+      $TempMsg="~~~~~"+$MeasName+" Start Test"+"~~~~~";
+      UpdateStatus($TempMsg);
+      //get CMD
+      $StartBit=StringTrim($StartBit);
+      $SendCMD = StringTrim($DUT_CMD_STATE1); 
+      call GET_PWMOUT_CMD();  				//生成最终命令
+      call SET_PWM_OUT_ON();  //发送命令请求PWM PIN 输出
+      SleepMilliseconds($AFTER_SET_PWMOUT); //等待输出稳定
+      
+      $Channel 		= CopyVariable($DMM_CH);
+      $Feq_LSL 		= CopyVariable($Feq_LSL_STATE1);
+      $Feq_USL 		= CopyVariable($Feq_USL_STATE1);
+      $duty_LSL 		= CopyVariable($duty_LSL_STATE1);
+      $duty_USL 		= CopyVariable($duty_USL_STATE1);
+      $PWM_LOOP=0;
+      $PWM_TEST_PASS=false;
+      while($PWM_TEST_PASS == false && $PWM_LOOP<5)
+      {
+	$DMMRead_FREQ=0;
+	call Keysight6510_MeasureFreq(); // call test FREQ
+	//add end test msg
+	UpdateStatus($DMMRead_FREQ);
+	$FREQ_inLimits = NumericLimitTestBool($DMMRead_FREQ, $Feq_LSL, $Feq_USL);
+	
+	$Rang =100;
+	$DMMRead_Vol=0;
+	call Keysight6510_MeasureDCVoltage(); // call test vol
+	UpdateStatus($DMMRead_Vol);
+	$duty = Divide($DMMRead_Vol,13.5);
+	$duty =Multiply($duty,100);
+	$duty_inLimits = NumericLimitTestBool($duty, $duty_LSL, $duty_USL);
+	$PWM_TEST_PASS= $duty_inLimits &&  $FREQ_inLimits;
+	$PWM_LOOP=$PWM_LOOP+1;
+      }
+	
+      $measureName= $PIN+"_VOL_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $DMMRead_Vol, "V", true, 2.3, 4.5, true);
+      $measureName= $PIN+"_FREQ_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $DMMRead_FREQ, "Hz", true, $Feq_LSL, $Feq_USL, true);
+       $measureName= $PIN+"_DUTY_"+$STATE_NAME;
+      RecordMeasurementWithLimits($measureName, $duty, "%", true, $duty_LSL, $duty_USL, true);
+      $PWM_TEST_PASS= $duty_inLimits &&  $FREQ_inLimits;
+      call CHECK_PWMOUT_DEBUG();
+    }
+
+    $rows_Loop=$rows_Loop+1;
+  }
+  return;
+}

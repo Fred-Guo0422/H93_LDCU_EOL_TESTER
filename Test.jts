@@ -1,0 +1,37 @@
+function PWM_OUT_TEST()  // TOP function 
+{
+  UpdateStatus("=>>>>>>>>>>>>>>>>>> PWM_OUT>>>>>>>>>>>>>>>>>>\r\n");
+  SetTestName("PWM_OUT");
+  $AFTER_SET_PWMOUT =1000;
+  // load config files
+  $worksheet = 7; //PWM OUT
+  $startcolumn = "A";
+  $startRow = 2;
+  $endColumn = "T";
+  $endRow = 12;
+  //~ $excelFile = "E:\\Projects\\H93_LRDCU_RFQ\\Bench\\Data\\H93左域EOL设备负载信息V1.4-20230216.xlsx";
+  call LoadExcelConfigFile(); //return array ()
+  $rows_Loop =0;
+  while($rows_Length>$rows_Loop )
+  {
+    // Loading Config info
+    call Load_PWM_OUT_STEP_DATA(); // 加载EXcel 一行
+    $StepEnable = NumericComparison($StepEnable, 1, "==");
+    if($StepEnable)  //检查是否使能测试
+    {
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~State2 PWM_75 Test//~~~~~~~~~~~~~~~~~~~~~~//
+      //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+      //Set test Name 
+      $STATE_NAME = "PWM_75%";
+      // show row info
+      $TempMsg="~~~~~"+$STATE_NAME+" Start Test"+"~~~~~";
+      UpdateStatus($TempMsg);
+      //get CMD
+      $StartBit=StringTrim($StartBit);
+      $SendCMD = StringTrim($DUT_CMD_STATE2); 
+      call GET_PWMOUT_CMD();  //生成最终命令
+      //~ $First_frame_CMD
+      //~ $Second_frame_CMD
+  return;
+}

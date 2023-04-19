@@ -1,0 +1,161 @@
+
+
+function CDCU_LIN_Check()
+{
+  UpdateStatus(">>>>>>>>>>>>>>>>>>>>CDCU_LIN_Check>>>>>>>>>>>>>>>>>>>>>>>");
+  $Names = "5.18 LIN 通道通讯测试";
+  SetTestName($Names);
+  UpdateStatus($Names);
+         //~ OperatorPrompt("1","");
+    $LInComPort = 10;
+    ($LinHandle, $success) = Serial_OpenBool($LInComPort,19200,8,"N",1);
+  //~ $LinHandle = Serial_Open($LInComPort,19200,8,"N",1);
+  SleepMilliseconds(200);
+  UpdateStatus("$comObject>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+  UpdateStatus($LinHandle);
+  UpdateStatus($success);
+  UpdateStatus("$success>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+  SleepMilliseconds(1000);
+  
+  
+  call LIN1_Check();
+  call LIN2_Check();
+  call LIN3_Check();
+  call LIN4_Check();
+  //~ call LIN5_Check();
+  
+  SleepMilliseconds(1000);
+  Serial_Close($LinHandle);
+    
+  return;
+}
+function LIN1_Check()
+{
+
+    //##########5.17 LPCAN 通道通讯测试##########
+    $canID = "0x721";
+
+    $MeasurementName ="LIN1_Check";
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN1_Line,1, $TaskName);
+    SleepMilliseconds(500);
+  
+    $Lin_Cmd = New("String","56 08 27 00 00 00 00 00 00 00 00");
+  //~ $Lin_Cmd = New("String","56 08 3C 00 00 00 00 00 00 00 00 3D");
+     call LIN_Communication_Send_MSG();
+  
+    UpdateStatus($receiveBuffer);
+       //~ OperatorPrompt("1","");
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN1_Line,0, $TaskName);
+
+    $Result = StringContains($receiveBuffer,"E7 00 55 20");
+    RecordMeasurementPassFail($MeasurementName, $receiveBuffer, "Bool", true, $Result);
+
+  
+  return;
+}
+function LIN2_Check()
+{
+
+    //##########5.17 LPCAN 通道通讯测试##########
+    $canID = "0x721";
+
+    $MeasurementName ="LIN2_Check";
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN2_Line,1, $TaskName);
+    SleepMilliseconds(500);
+  
+    //~ $Lin_Cmd = New("String","56 08 24 00 00 00 00 00 00 00 00");
+   $Lin_Cmd = New("String","56 08 3C 00 00 00 00 00 00 00 00 3D");
+     call LIN_Communication_Send_MSG();
+    UpdateStatus($receiveBuffer);
+     //~ OperatorPrompt("2","");
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN2_Line,0, $TaskName);
+
+    $Result = StringContains($receiveBuffer,"FF FF 07");
+    RecordMeasurementPassFail($MeasurementName, $receiveBuffer, "Bool", true, $Result);
+   //~ OperatorPrompt("i","");
+  
+  return;
+}
+function LIN3_Check()
+{
+
+    //##########5.17 LPCAN 通道通讯测试##########
+    $canID = "0x721";
+
+    $MeasurementName ="LIN3_Check";
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN3_Line,1, $TaskName);
+    SleepMilliseconds(500);
+  
+    $Lin_Cmd = New("String","56 08 24 00 00 00 00 00 00 00 00");
+   //~ $Lin_Cmd = New("String","56 08 3C 00 00 00 00 00 00 00 00 3D");
+     call LIN_Communication_Send_MSG();
+    UpdateStatus($receiveBuffer);
+       //~ OperatorPrompt("3","");
+
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN3_Line,0, $TaskName);
+
+    $Result = StringContains($receiveBuffer,"FF FF 07");
+    RecordMeasurementPassFail($MeasurementName, $receiveBuffer, "Bool", true, $Result);
+   //~ OperatorPrompt("i","");
+  
+  return;
+}
+function LIN4_Check()
+{
+
+    //##########5.17 LPCAN 通道通讯测试##########
+    $canID = "0x721";
+
+    $MeasurementName ="LIN4_Check";
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN4_Line,1, $TaskName);
+    SleepMilliseconds(500);
+  
+    $Lin_Cmd = New("String","56 08 19 00 00 00 00 00 00 00 00");
+   //~ $Lin_Cmd = New("String","56 08 3C 00 00 00 00 00 00 00 00 3D");
+     call LIN_Communication_Send_MSG();
+    UpdateStatus($receiveBuffer);
+       //~ OperatorPrompt("4","");
+
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN4_Line,0, $TaskName);
+
+    $Result = StringContains($receiveBuffer,"55 99 00 55 20");
+    RecordMeasurementPassFail($MeasurementName, $receiveBuffer, "Bool", true, $Result);
+   //~ OperatorPrompt("i","");
+  
+  return;
+}
+function LIN5_Check()
+{
+
+    //##########5.17 LPCAN 通道通讯测试##########
+    $canID = "0x721";
+
+    $MeasurementName ="LIN5_Check";
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN5_Line,1, $TaskName);
+    SleepMilliseconds(500);
+     call LIN_Communication_Send_MSG();
+    UpdateStatus($receiveBuffer);
+   //~ OperatorPrompt("5","");
+    NI_DAQmx_Write_Dig_Port_Line($DeviceName, $CANLIN_Port, $LIN5_Line,0, $TaskName);
+
+    $Result = StringContains($receiveBuffer,"ID:0285");
+    RecordMeasurementPassFail($MeasurementName, $receiveBuffer, "Bool", true, $Result);
+   //~ OperatorPrompt("i","");
+  
+  return;
+}
+
+
+function LIN_Communication_Send_MSG()
+{
+    UpdateStatus("LIN_Communication_Send_MSG");
+    //~ $Lin_Cmd = New("String","FF FF FF FF FF FF FF FF");
+    $WriteString1 = "LIN PC-->DUT " + $Lin_Cmd;
+    $TimeOut = 5000;
+    $receiveBuffer = Serial_SendBinaryMilliseconds($LinHandle,$Lin_Cmd,"",$TimeOut);
+    UpdateStatus("=======================receiveBuffer===========================");
+    UpdateStatus($receiveBuffer);
+    UpdateStatus("=======================receiveBuffer===========================");
+    $WriteString1 = "LIN DUT-->PC " + $receiveBuffer;
+    return;
+}

@@ -8,6 +8,10 @@
 //Jabiltest Version:           7.50.30
 //Released:			2023/03/10
 //Description:		
+//////////////////////////////////////////Update info////////////////////////////////
+//~ 2023/04/15 :  修复夹具进出需要释放下压的BUG
+
+
 //////////////////////////////////////////Debug Sequence////////////////////////////////
 //~ $DeviceName="Dev1";
 //~ NI_DAQmx_Initialize();
@@ -174,7 +178,6 @@ function Fix_Start()
 {
     call Sub_SetFixInto();
     call Sub_SetFixDown();//下压到位
-
     UpdateStatus($Fixtures_type);
     if($Fixtures_type==1)
     {
@@ -252,42 +255,56 @@ function Sub_SetFixBoxOpen()
 //~ ~~~~~~~~~~~ Sub_SetFixInto~~~~~~~~~~~~~~~
 function Sub_SetFixInto()
 {
-      UpdateStatus("~~~~~~~~~~~~~~~Set Fix Into!!~~~~~~~~~~~~~~~");
-
-	//~ OperatorPrompt("Sub_SetFixInto", "OK");
-       
-      $Loop_Flag =true;
-      $Loop=0;
-      $result=false;
-      while($Loop_Flag ==true && $Loop<=10)
+    UpdateStatus("~~~~~~~~~~~~~~~Set Fix Into!!~~~~~~~~~~~~~~~");
+   //先检查是否是UP状态
+    $IsFixUp = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$UpSensorPort,$UpSensorLine,$Fix_Control_Task);
+    $IsFixDown=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$DownSensorPort,$DownSensorLine,$Fix_Control_Task);  
+    $g_FixUp_ = $IsFixUp==0 && $IsFixDown==1;
+    if(!$g_FixUp_)
+    {
+      call Sub_SetFixUp();
+    }
+      //~ OperatorPrompt("Sub_SetFixInto", "OK");
+    $Loop_Flag =true;
+    $Loop=0;
+    $result=false;
+    while($Loop_Flag ==true && $Loop<=10)
+    {
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Out_cylinderPort,$Out_cylinderLine,0,$Fix_Control_Task);
+      NI_DAQmx_Write_Dig_Port_Line($DeviceName,$In_cylinderPort,$In_cylinderLine,1,$Fix_Control_Task);
+      SleepMilliseconds(200);
+      $IsFixIn = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$InSensorPort,$InSensorLine,$Fix_Control_Task);
+      $IsFixOut=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$OutSensorPort,$OutSensorLine,$Fix_Control_Task);  
+      if($IsFixIn==0 && $IsFixOut==1)
       {
-	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$Out_cylinderPort,$Out_cylinderLine,0,$Fix_Control_Task);
-	NI_DAQmx_Write_Dig_Port_Line($DeviceName,$In_cylinderPort,$In_cylinderLine,1,$Fix_Control_Task);
-	SleepMilliseconds(200);
-	$IsFixIn = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$InSensorPort,$InSensorLine,$Fix_Control_Task);
-	$IsFixOut=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$OutSensorPort,$OutSensorLine,$Fix_Control_Task);  
-	if($IsFixIn==0 && $IsFixOut==1)
-	{
-	  	  $Loop_Flag= false;
-		  $result=true;
-		  UpdateStatus("Fix into Done!!");
-		  $FixInto? =true;
-	}
-	$Loop = $Loop+1;
-	SleepMilliseconds(500); 
+		$Loop_Flag= false;
+		$result=true;
+		UpdateStatus("Fix into Done!!");
+		$g_FixInto_ =true;
       }
-      if($result==false)
-      {
-	Fail("Please check In Out Cylinder&Sensor!!");
-	$FixInto? =false;
-      }
-       return;
+      $Loop = $Loop+1;
+      SleepMilliseconds(500); 
+    }
+    if($result==false)
+    {
+      Fail("Please check In Out Cylinder&Sensor!!");
+      $g_FixInto_ =false;
+    }
+     return;
   }
 
 //~ ~~~~~~~~~~~ Sub_SetFixout~~~~~~~~~~~~~~~
 function Sub_SetFixOut()
 {
       UpdateStatus("~~~~~~~~~~~~~~~Set Fix Out!!~~~~~~~~~~~~~~~");
+     //先检查是否是UP状态
+    $IsFixUp = NI_DAQmx_Read_Dig_Port_Line($DeviceName,$UpSensorPort,$UpSensorLine,$Fix_Control_Task);
+    $IsFixDown=  NI_DAQmx_Read_Dig_Port_Line($DeviceName,$DownSensorPort,$DownSensorLine,$Fix_Control_Task);  
+    $g_FixUp_ = $IsFixUp==0 && $IsFixDown==1;
+    if(!$g_FixUp_)
+    {
+      call Sub_SetFixUp();
+    }
       $Loop_Flag =true;
       $Loop=0;
       $result=false;
@@ -303,8 +320,8 @@ function Sub_SetFixOut()
 	  	  $Loop_Flag= false;
 		  $result=true;
 		  UpdateStatus("Fix into Out!!");
-		  $FixOut? =true;
-		  $FixInto? =false;
+		  $g_FixOut_ =true;
+		  $g_FixInto_ =false;
 	}
 	$Loop = $Loop+1;
 	SleepMilliseconds(500); 
@@ -312,8 +329,8 @@ function Sub_SetFixOut()
       if($result==false)
       {
 	Fail("Please check In Out Cylinder&Sensor!!");
-	$FixOut?=false;
-	//~ $FixInto? =false;
+	$g_FixOut_=false;
+	//~ $g_FixInto_ =false;
       }
 	return;
 }
@@ -338,7 +355,7 @@ function Sub_SetFixDown()
 	UpdateStatus("Fix Down Done!!");
 	$Loop_Flag= false;
 	$result=true;
-	$FixDown? =true;
+	$g_FixDown_ =true;
 	
       }
       $Loop = $Loop+1;
@@ -347,7 +364,7 @@ function Sub_SetFixDown()
   if($result==false)
   {
     Fail("Please check Up Down Cylinder&Sensor!!");
-    $FixDown? =false;
+    $g_FixDown_ =false;
   }
     return;
 } 
@@ -356,7 +373,7 @@ function Sub_SetFixUp()
 {
       UpdateStatus("Set Fix Up!!");
      
-      $Loop_Flag =true;
+  $Loop_Flag =true;
   $Loop=0;
   $result=false;
   while($Loop_Flag ==true && $Loop<=10)
@@ -372,8 +389,8 @@ function Sub_SetFixUp()
 	UpdateStatus("Fix Up Done!!");
 	$Loop_Flag= false;
 	$result=true;
-	$FixUp? =true;
-	$FixDown? =false;
+	$g_FixUp_ =true;
+	$g_FixDown_ =false;
       }
       $Loop = $Loop+1;
       SleepMilliseconds(500); 
@@ -381,7 +398,7 @@ function Sub_SetFixUp()
   if($result==false)
   {
     Fail("Please check Up Down Cylinder&Sensor!!");
-    $FixUp? =false;
+    $g_FixUp_ =false;
   }
   return;
 }
