@@ -42,9 +42,10 @@
   call DUT_POWER_ON();
   //~ OperatorPrompt("Main Test Start", "OK");
   call WorkMode_Current();
-
+  call Add_ZLG_USBCANFD_AutoCAN(); 		// 设置心跳
+  call ZLG_USBCANFD_AutoCAN_Enable();
   call LIN_TEST();  					 // RFLIN只有开机时候有报文输出
-  call SUB_CAN_TEST();
+  //~ call SUB_CAN_TEST();
   SetTestName("INTO_EOL");
   call INTO_1001();
   call INTO_1003();
@@ -67,6 +68,8 @@
   call Write_CAR_MODE();				//写模块配置
   call EMMC_WRITE()					// 写EMMC
   call EEPROM_WRITE();				//写EEPROM
+  call EEPROM_READ();
+  call EMMC_READ();
   call WRITE_A5F5();					//写追溯码 
   call WRITE_Process_ID();				// write Process_ID
   call Soft_Restart();
@@ -79,8 +82,7 @@
   call INTO_2702();
   SetTestName("Read_DUT_INFO");
   call Read_PCBA_SN();
-  //~ call EEPROM_READ();
-  //~ call EMMC_READ();
+
   call read_factory_mode_start();	
   call READ_A5F5();						//读追溯码 
   //~ call read_factory_mode_end();
@@ -90,24 +92,24 @@
   
   //  ~~~~~~~~~~~~~~~~~~~Main Functino Test Step Start~~~~~~~~~~~~~~~~~~~~~~~~~
   //~ call Fixtures_LoadBox_LoadOn(); 	
-  call PWM_OUT_TEST();    //~ // PWM OUT TEST
-  call PWM_IN_TEST(); //~ OperatorPrompt("Digital_IN_UNLOADING_TEST_Debug!!!!", "OK");
-  call Analog_INPUT_RES_TYPE_TEST();    		//Analog_INPUT
-  call Analog_INPUT_VOL_TYPE_TEST();    		 //Analog_INPUT
+  call FULL_Bridge();  						//FULL_Bridge
   call Digital_OUT_TEST();   					//~ //Digital_OUT
   call Digital_IN_UNLOADING_TEST();  			//Digital_IN
   call Digital_IN_LOADING_TEST();  			 //Digital_IN
-  call FULL_Bridge();  						//FULL_Bridge
-
-  //  ~~~~~~~~~~~~~~~~~~~Main Functino Test Step END~~~~~~~~~~~~~~~~~~~~~~~~~
-  
+  call PWM_OUT_TEST();    					//~ // PWM OUT TEST
+  call PWM_IN_TEST(); 					//~ OperatorPrompt("Digital_IN_UNLOADING_TEST_Debug!!!!", "OK");
+  call Analog_INPUT_RES_TYPE_TEST();    		//Analog_INPUT
+  call Analog_INPUT_VOL_TYPE_TEST();    		 //Analog_INPUT
   // Sleep_waken_TEST
   call SLEEP_WAKEN_TEST();
   call DUT_POWER_ON();
+  Sleep(1);
   call Soft_Restart();
   call CHECK_DCT_CODE(); 					// 最后执行这个步骤  
   End;
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+//  ~~~~~~~~~~~~~~~~~~~Main Functino Test Step END~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 function WorkMode_Current()
 {
@@ -130,7 +132,6 @@ function Initialize()
   $g_Testdebug=true;  ///Global debugging flag
   $g_System_Config_File="D:\\22684_H93_LDCU_EOL_TESTER\\ConfigFiles\\HW_Config.ini";
   $g_ConfigPath = "D:\\22684_H93_LDCU_EOL_TESTER\\ConfigFiles\\";
-  
   $View_TXT_String="初始化文件配置信息";
   call Method_View_TXT_Process_Main();
   $g_DUT_Station="LDCU_EOL";
@@ -146,6 +147,7 @@ function Initialize()
   //~ OperatorPrompt("LoadBoxOpen", "OK");
   call LoadBoxOpen();
   //~ call LoadBoxResetSW();
+ 
   
   // 测试仪器初始化
   call Init_DAQ6509();
@@ -156,9 +158,7 @@ function Initialize()
   call Cylinder_Initialize();
   call Init_ZLG_USBCANFD();
   //~ call Read_ZLG_USBCANFD_Info();
-  call Add_ZLG_USBCANFD_AutoCAN(); // 设置心跳
-  call ZLG_USBCANFD_AutoCAN_Enable();
-  
+    call Add_ZLG_USBCANFD_AutoCAN(); // 设置心跳
   //~ OperatorPrompt("cell 1", "OK");
   return;
 }
@@ -200,6 +200,7 @@ function PostUUT()
 {
   $View_TXT_String="PostUUT";
     call Method_View_TXT_Process_Main();
+    call ZLG_USBCANFD_AutoCAN_Disable();
     ///Release the fixture and the product will be disconnected from the power supply at PostUUT finish
     SetTestName("PostUUT");
     call Fixtures_LoadBox_LoadOff();
@@ -231,8 +232,8 @@ function PreUUT()
   //~ SleepMilliseconds(500);
   //~ call Init_ZLG_USBCANFD();
   //~ call Read_ZLG_USBCANFD_Info();
-  call Add_ZLG_USBCANFD_AutoCAN(); // 设置心跳
-  call ZLG_USBCANFD_AutoCAN_Enable();
+ 
+  //~ call ZLG_USBCANFD_AutoCAN_Enable();
   //~ USBCANFD_ResetCAN($g_ZLG_USBCAN_Channel_Handle)		//重置 CH1
   //~ USBCANFD_ResetCAN($g_ZLG_USBCAN_Channel_Handle2)		//重置 CH2
   return;
@@ -891,7 +892,7 @@ function Read_PCBA_SN()
     RecordMeasurementPassFail($MeasName_, $CAN_Rev_Msg, "Bool",true,$Result);	
     if($Result)
     {
-      $hexString = StringParse($StringToParse, $CAN_Send_Msg, "AA");
+      $hexString = StringParse($CAN_Rev_Msg, $CAN_Rev_ExpMsg, "AA");
       $hexString = StringTrim($hexString);
       $PCBSN = HexStringToString($hexString, " ");
       RecordMeasurementPassFail("PCBASN", $PCBSN, "Bool",true,true);	
@@ -1065,27 +1066,26 @@ function read_factory_mode_end()
 //~~~~~~~~追溯编码//~~~~~~~~
  function WRITE_A5F5()
  {
-      //只需在EOL台写入，其他不需要
-      // 写: 2E A5 F5
-      // 读: 22 A5 F5
+    //只需在EOL台写入，其他不需要
+    // 写: 2E A5 F5
+    // 读: 22 A5 F5
     $View_TXT_String="WRITE_A5F5";
     call Method_View_TXT_Process_Main();  
-
     $CAN_Send_Msg = "04 2E A5 F5 00 CC CC CC";
     $CAN_Rev_ExpMsg = "A5 F5";
-    $MeasurementName = "Read_A5F5";
+    $MeasurementName = "WRITE_A5F5";
+    $CANFD_SEND_LOOP=3;
+    $Rev_Delay=200;
+    call CANFD_SendMillisecondsMultiWait();
 
-    call ZLG_CANFD_Send();//send can msg
-    SleepMilliseconds(1000);
-    call ZLG_CANFD_Rev();
-    //~ $CAN_Rev_Msg = StringLookup("ID:07A1,data",$CAN_Rev_Msg);
+    if($Report_Mark_SendMessage_Enable)
+    {
+      $MeasName_ = $MeasurementName+"_SEND";
+      RecordMeasurementPassFail($MeasName_, $CAN_Send_Msg, "Bool", true, true);
+    }
+    $MeasName_ = $MeasurementName+"_RECE";
     $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
-    //~ UpdateStatus("====== 50 03?=========");
-    //~ UpdateStatus( $Result);
-
-    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
-    return;
-   
+    RecordMeasurementPassFail($MeasName_, $CAN_Rev_Msg, "Bool",true,$Result);			
     return;
   }
  
@@ -1096,22 +1096,18 @@ function read_factory_mode_end()
     $CAN_Send_Msg = "03 22 A5 F5 CC CC CC CC";
     $CAN_Rev_ExpMsg = "A5 F5 00";
     $MeasurementName = "Read_A5F5";
-    $Result =false;
-    $loop = 0;
-    while($Result!=true && $loop<3)
+    $CANFD_SEND_LOOP=3;
+    $Rev_Delay=50;
+    call CANFD_SendMillisecondsMultiWait();
+
+    if($Report_Mark_SendMessage_Enable)
     {
-    call ZLG_CANFD_Send();//send can msg
-    SleepMilliseconds(500);
-    call ZLG_CANFD_Rev();
-    //~ $CAN_Rev_Msg = StringLookup("ID:07A1,data",$CAN_Rev_Msg);
-    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
-    //~ UpdateStatus("====== 50 03?=========");
-    //~ UpdateStatus( $Result);
-    $loop = $loop+1;
+      $MeasName_ = $MeasurementName+"_SEND";
+      RecordMeasurementPassFail($MeasName_, $CAN_Send_Msg, "Bool", true, true);
     }
-    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);		
-    return;
-   
+    $MeasName_ = $MeasurementName+"_RECE";
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasName_, $CAN_Rev_Msg, "Bool",true,$Result);		
     return;
   }
   
@@ -1720,11 +1716,11 @@ function PCAN_TEST()
   UpdateStatus($returned);
   $SBUCAN_RESULT=false;
   $SBUCAN_TEST_LOOP=0;
-  while($SBUCAN_TEST_LOOP<10 && SBUCAN_RESULT=false)
+  while($SBUCAN_TEST_LOOP<10 && $SBUCAN_RESULT==false)
   {
     SleepMilliseconds(1000);
     call ZLG_CANFD_CH2_Rev();
-    CAN_Rev_ExpMsg="ID:00FF";   
+    $CAN_Rev_ExpMsg="ID:00FF";   
     $SBUCAN_RESULT = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
   }
   if($SBUCAN_RESULT)
@@ -1753,11 +1749,11 @@ function ICAN_TEST()
   
   $SBUCAN_RESULT=false;
   $SBUCAN_TEST_LOOP=0;
-  while($SBUCAN_TEST_LOOP<10 && SBUCAN_RESULT=false)
+  while($SBUCAN_TEST_LOOP<10 && $SBUCAN_RESULT==false)
   {
     SleepMilliseconds(1000);
     call ZLG_CANFD_CH2_Rev();
-    CAN_Rev_ExpMsg="ID:0132";   
+    $CAN_Rev_ExpMsg="ID:0132";   
     $SBUCAN_RESULT = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
   }
   if($SBUCAN_RESULT)
@@ -1787,11 +1783,11 @@ function BCAN_TEST()
   UpdateStatus($result);
   $SBUCAN_RESULT=false;
   $SBUCAN_TEST_LOOP=0;
-  while($SBUCAN_TEST_LOOP<10 && SBUCAN_RESULT=false)
+  while($SBUCAN_TEST_LOOP<10 && $SBUCAN_RESULT==false)
   {
     SleepMilliseconds(1000);
     call ZLG_CANFD_CH2_Rev();
-    CAN_Rev_ExpMsg="ID:04E0";   
+    $CAN_Rev_ExpMsg="ID:04E0";   
     $SBUCAN_RESULT = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
   }
   if($SBUCAN_RESULT)
@@ -1822,11 +1818,11 @@ function CCAN_TEST()
   UpdateStatus($returned);
    $SBUCAN_RESULT=false;
   $SBUCAN_TEST_LOOP=0;
-  while($SBUCAN_TEST_LOOP<10 && SBUCAN_RESULT=false)
+  while($SBUCAN_TEST_LOOP<10 && $SBUCAN_RESULT==false)
   {
     SleepMilliseconds(1000);
     call ZLG_CANFD_CH2_Rev();
-    CAN_Rev_ExpMsg="ID:0106";   
+    $CAN_Rev_ExpMsg="ID:0106";   
     $SBUCAN_RESULT = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
   }
   if($SBUCAN_RESULT)
@@ -2177,7 +2173,7 @@ function J9_2_DI_DriveDoorReleaseSW_LS_waken()
   $View_TXT_String="J9_2_DI_DriveDoorReleaseSW_LS_Sleep";
   call Method_View_TXT_Process_Main();
   call DUT_SLEEP();
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
+  RecordMeasurementPassFail("J9_2_DI_DriveDoorReleaseSW_LS_Sleep",$DUT_Sleep_Result , "bool", false, $DUT_Sleep_Result);
   SleepMilliseconds(1000);
   if($DUT_Sleep_Result)
   {
@@ -2222,7 +2218,7 @@ function J9_4_DI_FLDoorUnlockSW_LS_waken()
   $View_TXT_String="J9_4_DI_FLDoorUnlockSW_LS_waken";
   call Method_View_TXT_Process_Main();
   call DUT_SLEEP();
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
+  RecordMeasurementPassFail("J9_4_DI_FLDoorUnlockSW_LS_waken", $DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
   if($DUT_Sleep_Result)
   {
       UpdateStatus("J9_4_DI_FLDoorUnlockSW_LS Sleep test PASS!");
@@ -2270,8 +2266,8 @@ function J9_22_J_DI_FLDoorAjarSW_LS_waken()
   call Method_View_TXT_Process_Main();
   call DUT_SLEEP();
   SleepMilliseconds(1000);
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("9_22_J_DI_FLDoorAjarSW_LS_Sleep", $DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J9_22_J_DI_FLDoorAjarSW_LS Sleep test PASS!");
       UpdateStatus($Response); 
@@ -2317,8 +2313,8 @@ function J9_24_DI_CentralOpenLockSw_LS_waken()
   call Method_View_TXT_Process_Main();
   call DUT_SLEEP();
   //~ OperatorPrompt("J9_2_DI_DriveDoorReleaseSW_LS_Sleep_waken", "OK");
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("J9_24_DI_CentralOpenLockSw_LS_waken_Sleep", $DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J9_24_DI_CentralOpenLockSw_LS_Sleep test PASS!");
       UpdateStatus($Response); 
@@ -2365,8 +2361,8 @@ function J1_46_DI_EmergencyAlarmSw_LS_waken()
   call DUT_SLEEP();
    SleepMilliseconds(1000);
   //~ OperatorPrompt("J9_2_DI_DriveDoorReleaseSW_LS_Sleep_waken", "OK");
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("DUT Sleep", $DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J1_46_DI_EmergencyAlarmSw_LS_waken_Sleep test PASS!");
       UpdateStatus($Response); 
@@ -2414,8 +2410,8 @@ function J9_3_DI_FLOutHandle_LS_waken()
   call DUT_SLEEP();
    SleepMilliseconds(1000);
   //~ OperatorPrompt("J9_2_DI_DriveDoorReleaseSW_LS_Sleep_waken", "OK");
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("DUT Sleep",$DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J9_3_J_DI_FLOutHandle_LS_waken test PASS!");
       UpdateStatus($Response); 
@@ -2464,8 +2460,8 @@ function J1_29_DI_RLDoorAjarSW_LS_waken()
   call DUT_SLEEP();
    SleepMilliseconds(1000);
   
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("DUT Sleep", $DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J1_29_DI_DCULifeBeat_waken test PASS!");
       UpdateStatus($Response); 
@@ -2511,8 +2507,8 @@ function J2_30_DI_RLDoorAjarSW_waken()
   call Method_View_TXT_Process_Main();
   call DUT_SLEEP();
   //~ OperatorPrompt("J9_2_DI_DriveDoorReleaseSW_LS_Sleep_waken", "OK");
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("DUT Sleep",$DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J2_30_DI_RLDoorAjarSW_waken test PASS!");
       UpdateStatus($Response); 
@@ -2558,8 +2554,8 @@ function J1_44_DI_TrunkOpenSw_LS_waken()
   call DUT_SLEEP();
    SleepMilliseconds(1000);
   //~ OperatorPrompt("J9_2_DI_DriveDoorReleaseSW_LS_Sleep_waken", "OK");
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("DUT Sleep",$DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J1_44_DI_TrunkOpenSw_LS_waken test PASS!");
       UpdateStatus($Response); 
@@ -2605,8 +2601,8 @@ function J2_47_AI_ASCtrSw_waken()
   call Method_View_TXT_Process_Main();
    SleepMilliseconds(1000);
   call DUT_SLEEP();
-  RecordMeasurementPassFail("DUT Sleep", "false", "bool", false, $DUT_Sleep_Result);
-  if($Result)
+  RecordMeasurementPassFail("DUT Sleep", $DUT_Sleep_Result, "bool", false, $DUT_Sleep_Result);
+  if($DUT_Sleep_Result)
   {
       UpdateStatus("J2_47_AI_ASCtrSw_waken test PASS!");
       UpdateStatus($Response); 

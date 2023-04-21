@@ -211,7 +211,7 @@ function CANFD_SendMillisecondsMultiWait()
   
 // INPUT
 // OUTPUT
-      //~c
+      //~$
       //~ $CAN_Rev_Msg
   $_GANFD_Loop_=0;
   $Result=false;
@@ -240,9 +240,6 @@ function CANFD_SendMillisecondsMultiWait()
       $CAN_Rev_Msg = StringReplace($CAN_Rev_Msg,"07E8",""); //删除ID
       $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg);
     }
-    //~ "ID:07E8,data:"
-
-
   }
     $trmp="NULL";
   return;

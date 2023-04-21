@@ -536,7 +536,7 @@ function Digital_OUT_TEST()
     $worksheet = 6; //shell DO
     $startcolumn = "A";
     $startRow = 2;
-    $endColumn = "O";
+    $endColumn = "U";
     $endRow = 57;
     $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
     UpdateStatus($Temp);
@@ -622,7 +622,7 @@ function Digital_OUT_TEST()
 	  }
 	  RecordMeasurementWithLimits($measureName,$DMMRead_Vol , "V", true, $DO_On_LSL, $DO_On_USL, true);
 	  $Internal_ENABLE = NumericComparison($Internal_Enabel, 1, "==");
-	  if($Internal_acqu)
+	  if($Internal_ENABLE)
 	  {
 	    $Acqu_type = StringTrim($Acqu_type);
 	    $Acqu_type_AI =StringComparison($Acqu_type,"AI","=="); //检查回采类型
@@ -630,17 +630,18 @@ function Digital_OUT_TEST()
 	    {
 	      //~~~~~~~~~~~~~~~~~~~DO回采电压检查~~~~~~~~~~~~~~~~~~~
 	      $AI_rate=0.0012207; //比率
+	      $AI_Function=CopyVariable($Internal_acqu);
 	      call SUB_Read_Analog();
 	      $AI_StartBit = CopyVariable($Acqu_Start_Bit);  // 需要传递给Parse_AI_DATA的参数
 	      call Parse_AI_DATA();
 	      $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
 	      // set MeasuName
-	      $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
-	      RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $Acqu_Curr_LSL, $Acqu_Curr_USL, true);
+	      //~ $MeasuName = $DO_PIN+"_"+$Internal_acqu+"_Vol";
+	      RecordMeasurementWithLimits($Internal_acqu, $Pin_AI_Vol, "V", true, $Acqu_Curr_LSL, $Acqu_Curr_USL, true);
 	    }
 	     $Acqu_type_DI =StringComparison($Acqu_type,"NA","=="); //检查回采类型
 	    if($Acqu_type_DI) //DI 类型回采
-	    {
+	  {
 	    call SUB_Read_Digital_Input();
 	    $ResultBit = StringSub($Digital_Rev_Binary_String,$Acqu_Start_Bit,1); 
 	    // check Readult 
@@ -969,7 +970,7 @@ function Load_DO_STEP_DATA()
   $DO_ParallelTest				=Array1DGetValue($rowArray ,13);  
   //~~~~~~~~~~~~~~~~~~~~~	内部采集参数  ~~~~~~~~~~~~~~~~~~~~~
   $Internal_acqu					=Array1DGetValue($rowArray ,14);    
-  $Internal_acqu					=Array1DGetValue($rowArray ,15);
+  $Internal_Enabel				=Array1DGetValue($rowArray ,15);
   $Acqu_type					=Array1DGetValue($rowArray ,16);    
   $Acqu_Start_Bit				=Array1DGetValue($rowArray ,17);    
   $Acqu_Curr_USL				=Array1DGetValue($rowArray ,18);    
@@ -1860,14 +1861,15 @@ function SUB_Read_Analog() // 读取所有的AI状态值，返回HEX不解析
     $CAN_Send_Msg = "30 00 00 CC CC CC CC CC";
     $CAN_Rev_ExpMsg = "ID:07E8,data:23";	
     $MeasurementName = "Read_Analog_INPUT(21_23frame)";
+    //~ call CANFD_SendMillisecondsMultiWait();
     call ZLG_CANFD_Send();//send can msg
     SleepMilliseconds(100);
     call ZLG_CANFD_Rev();
     $CAN_Rev_Msg = StringTrim($CAN_Rev_Msg); //删除前后空白
     
-    //~ $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
-    //~ RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
-    //~ UpdateStatus( $CAN_Rev_Msg);
+    $Result = StringContains($CAN_Rev_Msg,$CAN_Rev_ExpMsg);
+    RecordMeasurementPassFail($MeasurementName, $CAN_Rev_Msg, "Bool", true, $Result);
+    UpdateStatus( $CAN_Rev_Msg);
     
     //整合数据
     $CAN_Rev_Msg_21_frame=StringParse($CAN_Rev_Msg,"ID:07E8,data:21",";");
@@ -1880,10 +1882,10 @@ function SUB_Read_Analog() // 读取所有的AI状态值，返回HEX不解析
     $CAN_Rev_Msg_23_frame = StringTrim($CAN_Rev_Msg_23_frame); //删除前后空白
     
     //~ UpdateStatus( "OK~~~\n");
-    //~ UpdateStatus( $CAN_Rev_Msg_First_frame);
-    //~ UpdateStatus( $CAN_Rev_Msg_21_frame);
-    //~ UpdateStatus( $CAN_Rev_Msg_22_frame);
-    //~ UpdateStatus( $CAN_Rev_Msg_23_frame);
+    UpdateStatus( $CAN_Rev_Msg_First_frame);
+    UpdateStatus( $CAN_Rev_Msg_21_frame);
+    UpdateStatus( $CAN_Rev_Msg_22_frame);
+    UpdateStatus( $CAN_Rev_Msg_23_frame);
     //~ UpdateStatus( "OK~~~\n");
     
     //拼接两帧数据 高位在前
@@ -2171,7 +2173,7 @@ function FULL_Bridge_TEST_Sate3()
     $worksheet 	= 8; //shell FULL_Bridge
     $startcolumn 	= "A";
     $startRow 	= 4;
-    $endColumn 	= "T";
+    $endColumn 	= "AC";
     $endRow 	= 20;
     $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
     UpdateStatus($Temp);
@@ -2207,12 +2209,12 @@ function FULL_Bridge_TEST_Sate3()
 	if($Report_Mark_SendMessage_Enable)
 	{
 	  $MeasName_SEND=$MeasName+"_SEND";
-	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "NA", true, true);
+	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "bool", true, true);
 	}
 	if($Report_Mark_ReceiveMessage_Enable)
 	{
 	  $MeasName_RECE=$MeasName+"_RECE";
-	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "NA", true, $Result);
+	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "bool", true, $Result);
 	}
 	
 	SleepMilliseconds(1000);
@@ -2257,7 +2259,7 @@ function FULL_Bridge_TEST_Sate2()
     $worksheet 	= 8; //shell FULL_Bridge
     $startcolumn 	= "A";
     $startRow 	= 4;
-    $endColumn 	= "T";
+    $endColumn 	= "AC";
     $endRow 	= 20;
     $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
     UpdateStatus($Temp);
@@ -2294,12 +2296,12 @@ function FULL_Bridge_TEST_Sate2()
 	if($Report_Mark_SendMessage_Enable)
 	{
 	  $MeasName_SEND=$MeasName+"_SEND";
-	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "NA", true, true);
+	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "bool", true, true);
 	}
 	if($Report_Mark_ReceiveMessage_Enable)
 	{
 	  $MeasName_RECE=$MeasName+"_RECE";
-	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "NA", true, $Result);
+	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "bool", true, $Result);
 	}
 	
 	SleepMilliseconds(1000);
@@ -2325,10 +2327,10 @@ function FULL_Bridge_TEST_Sate2()
 	  call SUB_Read_Analog();
 	  $AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
 	  call Parse_AI_DATA();
-	  $Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
+	  $Pin_AI_Vol = $Internal_acqu * $AI_rate; //比率
 	  // set MeasuName
-	  $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
-	  RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL2, $Internal_acqu_Curr_USL2, true);
+	  //~ $MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
+	  RecordMeasurementWithLimits($Internal_acqu, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL2, $Internal_acqu_Curr_USL2, true);
 	}
     	if($g_FULL_Bridge_Debug==true)
 	  {
@@ -2354,7 +2356,7 @@ function FULL_Bridge_TEST_Sate1()
     $worksheet 	= 8; //shell FULL_Bridge
     $startcolumn 	= "A";
     $startRow 	= 4;
-    $endColumn 	= "T";
+    $endColumn 	= "AC";
     $endRow 	= 20;
     $Temp="Read excel worksheet is "+$worksheet+"start column is "+$startcolumn+"start Row is "+$startRow+"end Column is "+$endColumn+"end Row is "+$endRow;
     UpdateStatus($Temp);
@@ -2390,12 +2392,12 @@ function FULL_Bridge_TEST_Sate1()
 	if($Report_Mark_SendMessage_Enable)
 	{
 	  $MeasName_SEND=$MeasName+"_SEND";
-	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "NA", true, true);
+	  RecordMeasurementPassFail($MeasName_SEND, $CAN_Send_Msg, "bool", true, true);
 	}
 	  if($Report_Mark_ReceiveMessage_Enable)
 	{
 	  $MeasName_RECE=$MeasName+"_RECE";
-	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "NA", true, $Result);
+	  RecordMeasurementPassFail($MeasName_RECE, $CAN_Rev_Msg, "bool", true, $Result);
 	}
 	
 	SleepMilliseconds(1000);
@@ -2428,14 +2430,16 @@ function FULL_Bridge_TEST_Sate1()
       $Internal_acqu_Enable = NumericComparison($Internal_acqu_Enable, 1, "==");
       if($Internal_acqu_Enable)
       {
+	SleepMilliseconds(50);
 	$AI_rate=0.0012207; //比率
-	call SUB_Read_Analog();
+	$AI_Function = CopyVariable($Internal_acqu);  
 	$AI_StartBit = CopyVariable($Internal_acqu_StartBit);  // 需要传递给Parse_AI_DATA的参数
+	call SUB_Read_Analog();
 	call Parse_AI_DATA();
 	$Pin_AI_Vol = $Pin_AI_Vol * $AI_rate; //比率
 	// set MeasuName
 	$MeasuName = $PIN+"_"+$Internal_acqu+"_Vol";
-	RecordMeasurementWithLimits($MeasuName, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL1, $Internal_acqu_Curr_USL1, true);
+	RecordMeasurementWithLimits($Internal_acqu, $Pin_AI_Vol, "V", true, $Internal_acqu_Curr_LSL1, $Internal_acqu_Curr_USL1, true);
       }
       if($g_FULL_Bridge_Debug==true)
       {
@@ -2662,7 +2666,7 @@ function J6_02_J6_04_Corotation()
   $Channel 	= "115";
   $lowerLimit =12;
   $upperLimit =14;
-  $Internal_acqu_Curr_LSL=-999
+  $Internal_acqu_Curr_LSL=-999;
   $Internal_acqu_Curr_USL=-999;
   $Internal_Name="M_AI_ESCCU_CSO2";
   call FULL_Bridge_Briver_2(); 
